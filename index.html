@@ -42,6 +42,28 @@
   .stat-value { font-size: 18px; font-weight: bold; }
   .profit-positive { color: #2ecc71; }
   .profit-negative { color: #e74c3c; }
+  .stats-filter {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 12px;
+    padding-bottom: 2px;
+  }
+  .stats-filter button {
+    flex: 0 0 auto;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    color: var(--tg-theme-text-color, #000);
+  }
+  .stats-filter button.active {
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+  }
 
   .mode-buttons {
     display: flex;
@@ -382,17 +404,24 @@
 <body>
 
 <!-- Верхние карточки статистики -->
+<div class="stats-filter">
+  <button class="active" id="periodAll" onclick="setStatsPeriod('all')">Всё время</button>
+  <button id="periodYear" onclick="setStatsPeriod('year')">Год</button>
+  <button id="periodMonth" onclick="setStatsPeriod('month')">Месяц</button>
+  <button id="periodWeek" onclick="setStatsPeriod('week')">Неделя</button>
+  <button id="periodToday" onclick="setStatsPeriod('today')">Сегодня</button>
+</div>
 <div class="stats">
   <div class="stat-card">
     <div class="stat-label">💰 Прибыль</div>
     <div class="stat-value" id="profit">0 ₽</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">🪙 Баланс USDT</div>
+    <div class="stat-label" id="balanceUsdtLabel">🪙 Баланс USDT</div>
     <div class="stat-value" id="balanceUsdt">0</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">💵 Баланс ₽</div>
+    <div class="stat-label" id="balanceRubLabel">💵 Баланс ₽</div>
     <div class="stat-value" id="balanceRub">0 ₽</div>
   </div>
   <div class="stat-card">
@@ -518,6 +547,7 @@ let deals = [];
 let banks = [];
 let editingDealId = null;
 let sortDesc = true;
+let currentStatsPeriod = 'all';
 const STORAGE_CHUNK_SIZE = 3000;
 
 // ---- Функции перемещения банков (кнопки) ----
@@ -607,6 +637,15 @@ function toggleSortOrder() {
   renderHistory();
 }
 
+function setStatsPeriod(period) {
+  currentStatsPeriod = period;
+  ['all', 'year', 'month', 'week', 'today'].forEach(key => {
+    const btn = document.getElementById('period' + key.charAt(0).toUpperCase() + key.slice(1));
+    if (btn) btn.classList.toggle('active', key === period);
+  });
+  updateStats();
+}
+
 function resetTradeForm() {
   document.getElementById('inputRub').value = '0';
   document.getElementById('inputUsdt').value = '0';
@@ -681,13 +720,15 @@ function updateBankBalance(id, value) {
 
 // Новая функция обновления статистики (без перерисовки списка банков)
 function updateStats() {
-  const stats = calculate();
+  const stats = calculate(currentStatsPeriod);
   document.getElementById('profit').textContent = formatRub(stats.profit);
   document.getElementById('profit').className = 'stat-value ' + (stats.profit >= 0 ? 'profit-positive' : 'profit-negative');
+  document.getElementById('balanceUsdtLabel').textContent = currentStatsPeriod === 'all' ? '🪙 Баланс USDT' : '🪙 USDT за период';
+  document.getElementById('balanceRubLabel').textContent = currentStatsPeriod === 'all' ? '💵 Баланс ₽' : '💵 ₽ за период';
   document.getElementById('balanceUsdt').textContent = stats.balanceUsdt.toFixed(2);
   document.getElementById('balanceRub').textContent = formatRub(stats.balanceRub);
   document.getElementById('bankBalanceTotal').textContent = formatRub(stats.totalBankBalance);
-  document.getElementById('turnoverDisplay').textContent = `Оборот: ${formatRub(stats.turnover)}`;
+  document.getElementById('turnoverDisplay').textContent = `Оборот (${stats.label}): ${formatRub(stats.turnover)}`;
 }
 
 function renderBankOptions() {
@@ -1004,46 +1045,97 @@ function renderHistory() {
   }).join('');
 }
 
-// ---- Расчёт статистики с учётом остатков на банках ----
-function calculate() {
-  let buyQueue = deals.filter(d => d.type === 'buy').map(d => ({ usdt: d.usdt, rate: d.rate }));
+function getDealTimestamp(deal) {
+  if (deal.timestamp) return deal.timestamp;
+  if (!deal.date) return 0;
+  const parts = deal.date.split('.');
+  if (parts.length !== 3) return 0;
+  const dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+  if (deal.time) {
+    const [h, m] = deal.time.split(':');
+    dateObj.setHours(parseInt(h) || 0, parseInt(m) || 0, 0, 0);
+  }
+  return dateObj.getTime();
+}
+
+function getStatsPeriodRange(period) {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+
+  if (period === 'today') return { start: start.getTime(), label: 'сегодня' };
+
+  if (period === 'week') {
+    const day = start.getDay() || 7;
+    start.setDate(start.getDate() - day + 1);
+    return { start: start.getTime(), label: 'неделя' };
+  }
+
+  if (period === 'month') {
+    start.setDate(1);
+    return { start: start.getTime(), label: 'месяц' };
+  }
+
+  if (period === 'year') {
+    start.setMonth(0, 1);
+    return { start: start.getTime(), label: 'год' };
+  }
+
+  return { start: null, label: 'всё время' };
+}
+
+function isDealInPeriod(deal, periodStart) {
+  return periodStart === null || getDealTimestamp(deal) >= periodStart;
+}
+
+// ---- Расчёт статистики с учётом фильтра периода ----
+function calculate(period = 'all') {
+  const periodInfo = getStatsPeriodRange(period);
+  const periodStart = periodInfo.start;
+  const sortedDeals = [...deals].sort((a, b) => getDealTimestamp(a) - getDealTimestamp(b));
+  let buyQueue = [];
   let totalProfit = 0;
   let totalBuyRub = 0, totalSellRub = 0;
   let totalBuyUsdt = 0, totalSellUsdt = 0;
   let totalDepositUsdt = 0;
 
-  deals.forEach(d => {
-    if (d.type === 'buy') {
-      totalBuyRub += d.rub;
-      totalBuyUsdt += d.usdt;
-    } else if (d.type === 'sell') {
-      totalSellRub += d.rub;
-      totalSellUsdt += d.usdt;
-    } else if (d.type === 'deposit') {
-      totalDepositUsdt += d.usdt;
-    }
-  });
+  sortedDeals.forEach(d => {
+    const inPeriod = isDealInPeriod(d, periodStart);
 
-  deals.filter(d => d.type === 'sell').forEach(sell => {
-    let usdtToSell = sell.usdt;
-    const sellRate = sell.rate;
-    while (usdtToSell > 0 && buyQueue.length) {
-      const buy = buyQueue[0];
-      const used = Math.min(usdtToSell, buy.usdt);
-      totalProfit += used * (sellRate - buy.rate);
-      buy.usdt -= used;
-      usdtToSell -= used;
-      if (buy.usdt <= 0.0001) buyQueue.shift();
+    if (d.type === 'buy') {
+      buyQueue.push({ usdt: d.usdt, rate: d.rate });
+      if (inPeriod) {
+        totalBuyRub += d.rub;
+        totalBuyUsdt += d.usdt;
+      }
+    } else if (d.type === 'sell') {
+      if (inPeriod) {
+        totalSellRub += d.rub;
+        totalSellUsdt += d.usdt;
+      }
+
+      let usdtToSell = d.usdt;
+      const sellRate = d.rate;
+      while (usdtToSell > 0 && buyQueue.length) {
+        const buy = buyQueue[0];
+        const used = Math.min(usdtToSell, buy.usdt);
+        if (inPeriod) totalProfit += used * (sellRate - buy.rate);
+        buy.usdt -= used;
+        usdtToSell -= used;
+        if (buy.usdt <= 0.0001) buyQueue.shift();
+      }
+    } else if (d.type === 'deposit' && inPeriod) {
+      totalDepositUsdt += d.usdt;
     }
   });
 
   const totalBankBalance = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
 
   const balanceUsdt = totalBuyUsdt + totalDepositUsdt - totalSellUsdt;
-  const balanceRub = totalSellRub - totalBuyRub + totalBankBalance;
+  const balanceRub = totalSellRub - totalBuyRub + (period === 'all' ? totalBankBalance : 0);
   const turnover = totalBuyRub + totalSellRub;
 
-  return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance };
+  return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance, label: periodInfo.label };
 }
 
 // ---- Главный рендер ----
