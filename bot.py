@@ -8,6 +8,7 @@ from flask import Flask, jsonify, request
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+APP_VERSION = "history-chunks-v1"
 
 app = Flask(__name__)
 
@@ -34,12 +35,17 @@ def send_message(chat_id, text, reply_markup=None):
     return api_call("sendMessage", payload)
 
 
+def get_webapp_url():
+    separator = "&" if "?" in WEBAPP_URL else "?"
+    return f"{WEBAPP_URL}{separator}v={APP_VERSION}"
+
+
 def send_webapp_button(chat_id):
     reply_markup = {
         "inline_keyboard": [[
             {
                 "text": "Открыть P2P калькулятор",
-                "web_app": {"url": WEBAPP_URL},
+                "web_app": {"url": get_webapp_url()},
             }
         ]]
     }
