@@ -31,6 +31,7 @@
     padding: 16px;
     padding-bottom: 82px;
     user-select: none;
+    color-scheme: dark;
   }
   
   /* Убираем стрелочки у всех числовых полей */
@@ -159,6 +160,16 @@
     background: rgba(255, 255, 255, 0.06);
     color: var(--app-text);
     outline: none;
+    color-scheme: dark;
+  }
+  select option {
+    background: #12151d;
+    color: #f6f7fb;
+  }
+  select option:checked,
+  select option:hover {
+    background: #263044;
+    color: #32f5a3;
   }
   .input-group input:focus,
   .input-group select:focus {
@@ -200,9 +211,10 @@
     padding: 4px 12px;
     border: none;
     border-radius: 6px;
-    background: rgba(142, 92, 255, 0.85);
-    color: #fff;
+    background: linear-gradient(135deg, rgba(50, 245, 163, 0.9), rgba(142, 92, 255, 0.9));
+    color: #07100d;
     font-size: 12px;
+    font-weight: bold;
     cursor: pointer;
     margin-right: 4px;
   }
@@ -286,10 +298,11 @@
     padding: 9px 10px;
     border: 1px solid var(--app-border);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.06);
+    background: #17202b;
     color: var(--app-text);
     font-size: 13px;
     outline: none;
+    color-scheme: dark;
   }
   .sort-btn {
     padding: 6px 14px;
@@ -438,6 +451,10 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(50, 245, 163, 0.18);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(50, 245, 163, 0.08), rgba(142, 92, 255, 0.1)), #0d1119;
   }
   .deal-edit-form label {
     display: block;
@@ -451,10 +468,17 @@
     padding: 8px 9px;
     border: 1px solid var(--app-border);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.06);
+    background: #17202b;
     color: var(--app-text);
     font-size: 13px;
     outline: none;
+    color-scheme: dark;
+  }
+  .deal-edit-form input:focus,
+  .deal-edit-form select:focus,
+  .history-bank-filter:focus {
+    border-color: rgba(50, 245, 163, 0.65);
+    box-shadow: 0 0 0 3px rgba(50, 245, 163, 0.12);
   }
   .deal-edit-form .wide {
     grid-column: 1 / -1;
