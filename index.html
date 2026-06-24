@@ -1000,17 +1000,17 @@
   <div class="form">
     <div class="input-group" id="rubGroup">
       <label id="labelRub">Потратил рублей</label>
-      <input type="number" id="inputRub" placeholder="0" value="0" 
+      <input type="text" id="inputRub" placeholder="0" value="0" 
              onfocus="this.select()" oninput="updateRate(); checkBank();" 
              onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
-             enterkeyhint="done" inputmode="numeric">
+             enterkeyhint="done" inputmode="decimal">
     </div>
     <div class="input-group">
       <label id="labelUsdt">Количество USDT</label>
-      <input type="number" id="inputUsdt" placeholder="0" value="0" 
+      <input type="text" id="inputUsdt" placeholder="0" value="0" 
              onfocus="this.select()" oninput="updateRate()" 
              onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
-             enterkeyhint="done" inputmode="numeric">
+             enterkeyhint="done" inputmode="decimal">
     </div>
 
     <div class="input-group" id="bankGroup">
@@ -1130,10 +1130,10 @@
     </div>
     <div class="input-group">
       <label>Сумма покупки ₽</label>
-      <input type="number" id="expenseAmount" placeholder="0"
+      <input type="text" id="expenseAmount" placeholder="0"
              onfocus="this.select()"
              onkeydown="if(event.key==='Enter'){event.preventDefault(); addCardExpense();}"
-             enterkeyhint="done" inputmode="numeric">
+             enterkeyhint="done" inputmode="decimal">
     </div>
     <div class="input-group">
       <label>Комментарий</label>
@@ -1155,10 +1155,10 @@
     </div>
     <div class="input-group">
       <label>Сумма перевода ₽</label>
-      <input type="number" id="transferAmount" placeholder="0"
+      <input type="text" id="transferAmount" placeholder="0"
              onfocus="this.select()"
              onkeydown="if(event.key==='Enter'){event.preventDefault(); addBankTransfer();}"
-             enterkeyhint="done" inputmode="numeric">
+             enterkeyhint="done" inputmode="decimal">
     </div>
     <div class="input-group">
       <label>Комментарий</label>
@@ -1388,13 +1388,22 @@ function resetTradeForm() {
   updateRate();
 }
 
+function parseNumberInput(value) {
+  if (value === null || value === undefined) return 0;
+  const normalized = String(value)
+    .replace(/\s/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^0-9.-]/g, '');
+  return parseFloat(normalized) || 0;
+}
+
 function updateRate() {
   if (currentMode === 'deposit') {
     document.getElementById('ratePreview').textContent = '💰 Пополнение баланса USDT';
     return;
   }
-  const rub = parseFloat(document.getElementById('inputRub').value) || 0;
-  const usdt = parseFloat(document.getElementById('inputUsdt').value) || 0;
+  const rub = parseNumberInput(document.getElementById('inputRub').value);
+  const usdt = parseNumberInput(document.getElementById('inputUsdt').value);
   if (rub > 0 && usdt > 0) {
     document.getElementById('ratePreview').textContent = `Курс: ${(rub/usdt).toFixed(2)} ₽/USDT`;
   } else {
@@ -1459,7 +1468,7 @@ function deleteBank(id) {
 function updateBankBalance(id, value) {
   const bank = banks.find(b => b.id === id);
   if (!bank) return;
-  const num = parseFloat(value) || 0;
+  const num = parseNumberInput(value);
   bank.balance = num;
   saveData();
   // Обновляем только статистику, не трогая список банков
@@ -1536,7 +1545,7 @@ function adjustBankBalance(bankName, amount) {
 function addCardExpense() {
   const bankName = document.getElementById('expenseBank').value;
   const category = document.getElementById('expenseCategory').value;
-  const amount = parseFloat(document.getElementById('expenseAmount').value) || 0;
+  const amount = parseNumberInput(document.getElementById('expenseAmount').value);
   const note = document.getElementById('expenseNote').value.trim();
 
   if (!bankName) { tg.showAlert('Выбери банк / карту.'); return; }
@@ -1585,7 +1594,7 @@ function deleteCardExpense(id) {
 function addBankTransfer() {
   const fromBankName = document.getElementById('transferFromBank').value;
   const toBankName = document.getElementById('transferToBank').value;
-  const amount = parseFloat(document.getElementById('transferAmount').value) || 0;
+  const amount = parseNumberInput(document.getElementById('transferAmount').value);
   const note = document.getElementById('transferNote').value.trim();
 
   if (!fromBankName) { tg.showAlert('Выбери банк, откуда списать.'); return; }
@@ -1802,7 +1811,7 @@ function checkBank() {
   if (currentMode !== 'sell') return;
   const bankName = document.getElementById('inputBank').value;
   const warningEl = document.getElementById('bankWarning');
-  const currentRub = parseFloat(document.getElementById('inputRub').value) || 0;
+  const currentRub = parseNumberInput(document.getElementById('inputRub').value);
   if (!bankName) { warningEl.classList.remove('show'); return; }
 
   const heat = getBankHeat(bankName, currentRub);
@@ -1849,8 +1858,8 @@ function reverseDealBankEffect(deal) {
 
 // ---- Добавление сделки ----
 function addDeal() {
-  const usdt = parseFloat(document.getElementById('inputUsdt').value) || 0;
-  let rub = parseFloat(document.getElementById('inputRub').value) || 0;
+  const usdt = parseNumberInput(document.getElementById('inputUsdt').value);
+  let rub = parseNumberInput(document.getElementById('inputRub').value);
   const bank = document.getElementById('inputBank').value;
 
   if (usdt <= 0) {
@@ -1951,8 +1960,8 @@ function saveEditDeal(id) {
   const type = document.getElementById(`edit-type-${id}`).value;
   const dateValue = document.getElementById(`edit-date-${id}`).value;
   const timeValue = document.getElementById(`edit-time-${id}`).value || '00:00';
-  const usdt = parseFloat(document.getElementById(`edit-usdt-${id}`).value) || 0;
-  const rub = type === 'deposit' ? 0 : (parseFloat(document.getElementById(`edit-rub-${id}`).value) || 0);
+  const usdt = parseNumberInput(document.getElementById(`edit-usdt-${id}`).value);
+  const rub = type === 'deposit' ? 0 : parseNumberInput(document.getElementById(`edit-rub-${id}`).value);
   const bank = document.getElementById(`edit-bank-${id}`)?.value || '';
 
   if (!dateValue) { tg.showAlert('Выберите дату!'); return; }
@@ -2005,11 +2014,11 @@ function buildDealEditForm(d) {
       </div>
       <div>
         <label>USDT</label>
-        <input type="number" id="edit-usdt-${d.id}" value="${d.usdt || 0}" inputmode="decimal">
+        <input type="text" id="edit-usdt-${d.id}" value="${d.usdt || 0}" inputmode="decimal">
       </div>
       <div id="edit-rub-wrap-${d.id}" style="${d.type === 'deposit' ? 'display:none;' : ''}">
         <label>Рубли</label>
-        <input type="number" id="edit-rub-${d.id}" value="${d.rub || 0}" inputmode="numeric">
+        <input type="text" id="edit-rub-${d.id}" value="${d.rub || 0}" inputmode="decimal">
       </div>
       <div id="edit-bank-wrap-${d.id}" style="${d.type === 'deposit' ? 'display:none;' : ''}">
         <label>Банк</label>
@@ -2154,11 +2163,11 @@ function renderBanksList() {
           <span class="deal-time-since ${timeClass}">⏱ Последняя сделка: ${timeSince}</span>
           <div class="bank-balance-input">
             <label>Остаток на банке (₽):</label>
-            <input type="number" id="balance-input-${bank.id}" value="${bank.balance || 0}" 
+            <input type="text" id="balance-input-${bank.id}" value="${bank.balance || 0}" 
                    onfocus="this.select()" 
                    oninput="updateBankBalance(${bank.id}, this.value)" 
                    onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
-                   enterkeyhint="done" inputmode="numeric"
+                   enterkeyhint="done" inputmode="decimal"
                    placeholder="0">
           </div>
         </div>
@@ -2668,8 +2677,8 @@ function normalizeImportedDeals(value) {
   return value
     .filter(d => d && ['buy', 'sell', 'deposit'].includes(d.type))
     .map(d => {
-      const rub = parseFloat(d.rub) || 0;
-      const usdt = parseFloat(d.usdt) || 0;
+      const rub = parseNumberInput(d.rub);
+      const usdt = parseNumberInput(d.usdt);
       const timestamp = d.timestamp || Date.now();
       const dateObj = new Date(timestamp);
       const normalized = {
@@ -2677,7 +2686,7 @@ function normalizeImportedDeals(value) {
         type: d.type,
         rub: d.type === 'deposit' ? 0 : rub,
         usdt,
-        rate: d.type === 'deposit' ? 0 : (parseFloat(d.rate) || (usdt > 0 ? rub / usdt : 0)),
+        rate: d.type === 'deposit' ? 0 : (parseNumberInput(d.rate) || (usdt > 0 ? rub / usdt : 0)),
         date: d.date || dateObj.toLocaleDateString('ru-RU'),
         time: d.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         timestamp
@@ -2843,11 +2852,11 @@ function addNormalizedBank(list, name, id, balance) {
   let existing = list.find(b => b.name.toLowerCase() === clean.toLowerCase());
   if (existing) {
     if (existing.balance === undefined && balance !== undefined) {
-      existing.balance = balance;
+      existing.balance = parseNumberInput(balance);
     }
     return;
   }
-  list.push({ id: id || Date.now() + Math.random(), name: clean, balance: balance || 0 });
+  list.push({ id: id || Date.now() + Math.random(), name: clean, balance: parseNumberInput(balance) });
 }
 
 function normalizeCardExpenses(saved) {
@@ -2861,7 +2870,7 @@ function normalizeCardExpenses(saved) {
         id: e.id || Date.now() + Math.random(),
         bank: String(e.bank).trim(),
         category: e.category || 'Прочее',
-        amount: parseFloat(e.amount) || 0,
+        amount: parseNumberInput(e.amount),
         note: e.note || '',
         date: e.date || dateObj.toLocaleDateString('ru-RU'),
         time: e.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
@@ -2881,7 +2890,7 @@ function normalizeBankTransfers(saved) {
         id: t.id || Date.now() + Math.random(),
         fromBank: String(t.fromBank).trim(),
         toBank: String(t.toBank).trim(),
-        amount: parseFloat(t.amount) || 0,
+        amount: parseNumberInput(t.amount),
         note: t.note || '',
         date: t.date || dateObj.toLocaleDateString('ru-RU'),
         time: t.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
