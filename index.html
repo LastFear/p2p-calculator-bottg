@@ -44,17 +44,17 @@
   .profit-negative { color: #e74c3c; }
   .stats-filter {
     display: flex;
-    gap: 6px;
+    gap: 5px;
     overflow-x: auto;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     padding-bottom: 2px;
   }
   .stats-filter button {
     flex: 0 0 auto;
-    padding: 9px 12px;
+    padding: 7px 10px;
     border: none;
-    border-radius: 10px;
-    font-size: 13px;
+    border-radius: 8px;
+    font-size: 12px;
     font-weight: bold;
     cursor: pointer;
     background: var(--tg-theme-secondary-bg-color, #f0f0f0);
@@ -85,6 +85,12 @@
   .mode-main.active {
     background: var(--tg-theme-button-color, #3390ec);
     color: var(--tg-theme-button-text-color, #fff);
+  }
+  .purchase-icon {
+    display: inline-block;
+    font-size: 0.8em;
+    margin-right: 2px;
+    vertical-align: 0.03em;
   }
   .mode-sub {
     display: flex;
@@ -197,6 +203,18 @@
     font-size: 14px;
     font-weight: normal;
     opacity: 0.8;
+  }
+  .bank-balance-summary {
+    text-align: right;
+    font-size: 12px;
+    font-weight: normal;
+    line-height: 1.25;
+    opacity: 0.75;
+  }
+  .bank-balance-summary strong {
+    display: block;
+    font-size: 13px;
+    opacity: 1;
   }
 
   .sort-controls {
@@ -417,23 +435,23 @@
     <div class="stat-value" id="profit">0 ₽</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label" id="balanceUsdtLabel">🪙 Баланс USDT</div>
+    <div class="stat-label">📊 Оборот</div>
+    <div class="stat-value" id="turnover">0 ₽</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">🪙 Баланс USDT</div>
     <div class="stat-value" id="balanceUsdt">0</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label" id="balanceRubLabel">💵 Баланс ₽</div>
+    <div class="stat-label">💵 Баланс ₽</div>
     <div class="stat-value" id="balanceRub">0 ₽</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">🏦 Остаток на банках</div>
-    <div class="stat-value" id="bankBalanceTotal">0 ₽</div>
   </div>
 </div>
 
 <!-- Вкладка "Сделки" -->
 <div class="view active" id="tradeView">
   <div class="mode-buttons">
-    <button class="mode-main active" id="modeBuy" onclick="setMode('buy')">📥 Покупка</button>
+    <button class="mode-main active" id="modeBuy" onclick="setMode('buy')"><span class="purchase-icon">📥</span>Покупка</button>
     <div class="mode-sub">
       <button id="modeSell" onclick="setMode('sell')">📤 Продажа</button>
       <button id="modeDeposit" onclick="setMode('deposit')">💰 Бонусы</button>
@@ -470,10 +488,7 @@
 
 <!-- Вкладка "История" -->
 <div class="view" id="historyView">
-  <div class="section-title">
-    <span>📜 История сделок</span>
-    <span class="turnover-display" id="turnoverDisplay">Оборот: 0 ₽</span>
-  </div>
+  <div class="section-title">📜 История сделок</div>
   <div class="sort-controls">
     <button class="sort-btn" id="sortBtn" onclick="toggleSortOrder()">⬇️ Сортировка: новые сверху</button>
   </div>
@@ -482,7 +497,10 @@
 
 <!-- Вкладка "Банки" -->
 <div class="view" id="banksView">
-  <div class="section-title">🏦 Мои банки</div>
+  <div class="section-title">
+    <span>🏦 Мои банки</span>
+    <span class="bank-balance-summary">Баланс<strong id="bankBalanceSummary">0 ₽</strong></span>
+  </div>
 
   <div class="form">
     <div class="input-group">
@@ -723,12 +741,10 @@ function updateStats() {
   const stats = calculate(currentStatsPeriod);
   document.getElementById('profit').textContent = formatRub(stats.profit);
   document.getElementById('profit').className = 'stat-value ' + (stats.profit >= 0 ? 'profit-positive' : 'profit-negative');
-  document.getElementById('balanceUsdtLabel').textContent = currentStatsPeriod === 'all' ? '🪙 Баланс USDT' : '🪙 USDT за период';
-  document.getElementById('balanceRubLabel').textContent = currentStatsPeriod === 'all' ? '💵 Баланс ₽' : '💵 ₽ за период';
+  document.getElementById('turnover').textContent = formatRub(stats.turnover);
   document.getElementById('balanceUsdt').textContent = stats.balanceUsdt.toFixed(2);
   document.getElementById('balanceRub').textContent = formatRub(stats.balanceRub);
-  document.getElementById('bankBalanceTotal').textContent = formatRub(stats.totalBankBalance);
-  document.getElementById('turnoverDisplay').textContent = `Оборот (${stats.label}): ${formatRub(stats.turnover)}`;
+  document.getElementById('bankBalanceSummary').textContent = formatRub(stats.totalBankBalance);
 }
 
 function renderBankOptions() {
@@ -1095,23 +1111,26 @@ function calculate(period = 'all') {
   const sortedDeals = [...deals].sort((a, b) => getDealTimestamp(a) - getDealTimestamp(b));
   let buyQueue = [];
   let totalProfit = 0;
-  let totalBuyRub = 0, totalSellRub = 0;
-  let totalBuyUsdt = 0, totalSellUsdt = 0;
-  let totalDepositUsdt = 0;
+  let periodBuyRub = 0, periodSellRub = 0;
+  let currentBuyRub = 0, currentSellRub = 0;
+  let currentBuyUsdt = 0, currentSellUsdt = 0;
+  let currentDepositUsdt = 0;
 
   sortedDeals.forEach(d => {
     const inPeriod = isDealInPeriod(d, periodStart);
 
     if (d.type === 'buy') {
       buyQueue.push({ usdt: d.usdt, rate: d.rate });
+      currentBuyRub += d.rub;
+      currentBuyUsdt += d.usdt;
       if (inPeriod) {
-        totalBuyRub += d.rub;
-        totalBuyUsdt += d.usdt;
+        periodBuyRub += d.rub;
       }
     } else if (d.type === 'sell') {
+      currentSellRub += d.rub;
+      currentSellUsdt += d.usdt;
       if (inPeriod) {
-        totalSellRub += d.rub;
-        totalSellUsdt += d.usdt;
+        periodSellRub += d.rub;
       }
 
       let usdtToSell = d.usdt;
@@ -1124,16 +1143,16 @@ function calculate(period = 'all') {
         usdtToSell -= used;
         if (buy.usdt <= 0.0001) buyQueue.shift();
       }
-    } else if (d.type === 'deposit' && inPeriod) {
-      totalDepositUsdt += d.usdt;
+    } else if (d.type === 'deposit') {
+      currentDepositUsdt += d.usdt;
     }
   });
 
   const totalBankBalance = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
 
-  const balanceUsdt = totalBuyUsdt + totalDepositUsdt - totalSellUsdt;
-  const balanceRub = totalSellRub - totalBuyRub + (period === 'all' ? totalBankBalance : 0);
-  const turnover = totalBuyRub + totalSellRub;
+  const balanceUsdt = currentBuyUsdt + currentDepositUsdt - currentSellUsdt;
+  const balanceRub = currentSellRub - currentBuyRub + totalBankBalance;
+  const turnover = periodBuyRub + periodSellRub;
 
   return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance, label: periodInfo.label };
 }
