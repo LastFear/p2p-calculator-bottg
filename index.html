@@ -698,7 +698,7 @@
   <div id="banksList"></div>
 
   <div id="bankStatsSection">
-    <div class="section-title">📊 Банки сегодня</div>
+    <div class="section-title">📊 Траты за период</div>
     <div id="bankStats"></div>
   </div>
 
@@ -860,6 +860,7 @@ function setStatsPeriod(period) {
     if (btn) btn.classList.toggle('active', key === period);
   });
   updateStats();
+  if (currentPage === 'banks') renderBankStats();
 }
 
 function setHistoryTypeFilter(type) {
@@ -1249,29 +1250,38 @@ function getBankHeat(bankName, currentRub = 0) {
 // ---- Рендеры ----
 function renderBankStats() {
   const container = document.getElementById('bankStats');
-  if (!banks.length) {
+  const periodInfo = getStatsPeriodRange(currentStatsPeriod);
+  const bankNames = getAllBankNames();
+  if (!bankNames.length) {
     container.innerHTML = '<div class="empty">Нет банков</div>';
     return;
   }
 
-  container.innerHTML = banks.map(bank => {
-    const heat = getBankHeat(bank.name);
-    const badgeClass = heat.level === 'red' ? 'badge-danger' : heat.level === 'yellow' ? 'badge-warn' : 'badge-ok';
-    const badge = heat.level === 'red' ? '🔴 Перегрет' : heat.level === 'yellow' ? '🟡 Риск' : '✅ Норма';
-    const left = Math.max(LIMIT_DAILY - heat.total, 0);
-    const lastTime = getLastDealTime(bank.name);
-    const timeSince = lastTime ? getTimeSince(lastTime) : 'нет сделок';
-    const timeClass = lastTime ? (Date.now() - lastTime > 3600000 ? 'warning' : 'ok') : '';
+  const rows = bankNames.map(name => {
+    const total = deals
+      .filter(d =>
+        d.type === 'sell' &&
+        d.bank &&
+        d.bank.toLowerCase() === name.toLowerCase() &&
+        isDealInPeriod(d, periodInfo.start)
+      )
+      .reduce((sum, d) => sum + d.rub, 0);
+    return { name, total };
+  }).filter(row => row.total > 0);
+
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty">За период «${periodInfo.label}» трат по банкам нет</div>`;
+    return;
+  }
+
+  rows.sort((a, b) => b.total - a.total);
+
+  container.innerHTML = rows.map(row => {
     return `
       <div class="bank-stat">
         <div class="bank-stat-header">
-          <span class="bank-name">🏦 ${escapeHtml(bank.name)}</span>
-          <span class="bank-badge ${badgeClass}">${badge}</span>
-        </div>
-        <div class="bank-stat-sub">
-          Сегодня: ${formatRub(heat.total)} из ${formatRub(LIMIT_DAILY)} • ${heat.percent}%<br>
-          Осталось: ${formatRub(left)} • сделок: ${heat.count} • крупных: ${heat.big}<br>
-          <span class="deal-time-since ${timeClass}">⏱ Последняя сделка: ${timeSince}</span>
+          <span class="bank-name">🏦 ${escapeHtml(row.name)}</span>
+          <span class="bank-badge badge-ok">${formatRub(row.total)}</span>
         </div>
       </div>
     `;
