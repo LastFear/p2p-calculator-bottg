@@ -518,6 +518,7 @@ let deals = [];
 let banks = [];
 let editingDealId = null;
 let sortDesc = true;
+const STORAGE_CHUNK_SIZE = 3000;
 
 // ---- Функции перемещения банков (кнопки) ----
 function moveBank(id, direction) {
@@ -1069,21 +1070,89 @@ function escapeHtml(v) {
   return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
 }
 
-function saveData() {
-  tg.CloudStorage.setItem('deals', JSON.stringify(deals));
-  tg.CloudStorage.setItem('banks', JSON.stringify(banks));
-}
-
-function loadData() {
-  tg.CloudStorage.getItem('deals', (err, val) => {
-    if (val) try { deals = JSON.parse(val); } catch(e) { deals = []; }
-    tg.CloudStorage.getItem('banks', (err2, val2) => {
-      if (val2) try { banks = JSON.parse(val2); } catch(e) { banks = []; }
-      banks = normalizeBanks(banks);
-      saveData();
-      render();
+function cloudGetItem(key) {
+  return new Promise(resolve => {
+    tg.CloudStorage.getItem(key, (err, value) => {
+      if (err) console.warn('CloudStorage getItem failed:', key, err);
+      resolve(err ? null : value);
     });
   });
+}
+
+function cloudSetItem(key, value) {
+  return new Promise(resolve => {
+    tg.CloudStorage.setItem(key, value, (err) => {
+      if (err) console.warn('CloudStorage setItem failed:', key, err);
+      resolve(!err);
+    });
+  });
+}
+
+async function loadLegacyJson(key, fallback) {
+  const value = await cloudGetItem(key);
+  if (!value) return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (e) {
+    console.warn('Legacy storage parse failed:', key, e);
+    return fallback;
+  }
+}
+
+async function loadJsonChunks(key, fallback) {
+  const countValue = await cloudGetItem(`${key}_chunks_count`);
+  const count = parseInt(countValue || '0', 10);
+  if (!count || count < 1) return null;
+
+  const chunks = await Promise.all(
+    Array.from({ length: count }, (_, index) => cloudGetItem(`${key}_chunk_${index}`))
+  );
+  if (chunks.some(chunk => chunk === null || chunk === undefined)) return fallback;
+
+  try {
+    const parsed = JSON.parse(chunks.join(''));
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (e) {
+    console.warn('Chunked storage parse failed:', key, e);
+    return fallback;
+  }
+}
+
+async function saveJsonChunks(key, value) {
+  const text = JSON.stringify(value);
+  const chunks = [];
+  for (let i = 0; i < text.length; i += STORAGE_CHUNK_SIZE) {
+    chunks.push(text.slice(i, i + STORAGE_CHUNK_SIZE));
+  }
+
+  const saved = await Promise.all(
+    chunks.map((chunk, index) => cloudSetItem(`${key}_chunk_${index}`, chunk))
+  );
+  if (saved.some(ok => !ok)) {
+    tg.showAlert('Не удалось сохранить данные. Проверьте интернет и попробуйте ещё раз.');
+    return false;
+  }
+
+  await cloudSetItem(`${key}_chunks_count`, String(chunks.length));
+  return true;
+}
+
+function saveData() {
+  saveJsonChunks('deals', deals);
+  saveJsonChunks('banks', banks);
+}
+
+async function loadData() {
+  const chunkedDeals = await loadJsonChunks('deals', []);
+  const chunkedBanks = await loadJsonChunks('banks', []);
+
+  deals = chunkedDeals || await loadLegacyJson('deals', []);
+  banks = chunkedBanks || await loadLegacyJson('banks', []);
+
+  banks = normalizeBanks(banks);
+  saveData();
+  render();
 }
 
 function normalizeBanks(saved) {
