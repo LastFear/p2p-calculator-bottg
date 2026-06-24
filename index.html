@@ -1076,6 +1076,9 @@
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
+if (typeof tg.disableVerticalSwipes === 'function') {
+  tg.disableVerticalSwipes();
+}
 
 // ---- Скрытие клавиатуры на iPhone ----
 function blurActiveElement() {
