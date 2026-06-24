@@ -1117,7 +1117,9 @@ function setupTelegramWindow() {
   if (typeof tg.disableVerticalSwipes === 'function') {
     tg.disableVerticalSwipes();
   }
-  const shouldUseFullscreen = ['ios', 'android'].includes(tg.platform);
+  const isMobileTelegram = ['ios', 'android', 'android_x'].includes(tg.platform);
+  const isPhoneWidth = window.matchMedia('(max-width: 720px) and (pointer: coarse)').matches;
+  const shouldUseFullscreen = isMobileTelegram && isPhoneWidth;
   if (shouldUseFullscreen && typeof tg.requestFullscreen === 'function' && !tg.isFullscreen) {
     try {
       tg.requestFullscreen();

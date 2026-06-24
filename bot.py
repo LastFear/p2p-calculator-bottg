@@ -8,7 +8,7 @@ from flask import Flask, jsonify, request
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-APP_VERSION = "responsive-window-v1"
+APP_VERSION = "menu-window-v1"
 
 app = Flask(__name__)
 
@@ -40,6 +40,19 @@ def get_webapp_url():
     return f"{WEBAPP_URL}{separator}v={APP_VERSION}"
 
 
+def sync_menu_button(chat_id=None):
+    payload = {
+        "menu_button": {
+            "type": "web_app",
+            "text": "Открыть",
+            "web_app": {"url": get_webapp_url()},
+        }
+    }
+    if chat_id:
+        payload["chat_id"] = chat_id
+    return api_call("setChatMenuButton", payload)
+
+
 def send_webapp_button(chat_id):
     reply_markup = {
         "inline_keyboard": [[
@@ -63,6 +76,10 @@ def handle_update(update):
         return
 
     if text.startswith("/start") or text.startswith("/app"):
+        try:
+            sync_menu_button(chat_id)
+        except Exception:
+            pass
         send_webapp_button(chat_id)
     else:
         send_message(chat_id, "Напиши /start, чтобы открыть калькулятор.")
