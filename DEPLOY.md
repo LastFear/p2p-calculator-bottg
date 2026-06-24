@@ -13,7 +13,7 @@
 4. В `Build and deployment` выбери:
    - Source: `Deploy from a branch`
    - Branch: `main`
-   - Folder: `/root`
+   - Folder: `/ (root)`
 5. Сохрани.
 
 Ссылка будет примерно такой:
