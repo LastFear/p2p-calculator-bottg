@@ -256,8 +256,40 @@
 
   .sort-controls {
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    gap: 8px;
     margin-bottom: 12px;
+  }
+  .history-filter-row {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+  }
+  .history-filter-btn {
+    flex: 0 0 auto;
+    padding: 7px 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--app-muted);
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .history-filter-btn.active {
+    background: var(--app-gradient);
+    color: #07100d;
+    border-color: transparent;
+  }
+  .history-bank-filter {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--app-text);
+    font-size: 13px;
+    outline: none;
   }
   .sort-btn {
     padding: 6px 14px;
@@ -400,14 +432,46 @@
     cursor: pointer;
     padding: 0 4px;
   }
-  .deal-edit-date {
+  .deal-edit-form {
+    width: 100%;
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .deal-edit-form label {
+    display: block;
     font-size: 11px;
-    padding: 2px 6px;
+    color: var(--app-muted);
+    margin-bottom: 4px;
+  }
+  .deal-edit-form input,
+  .deal-edit-form select {
+    width: 100%;
+    padding: 8px 9px;
     border: 1px solid var(--app-border);
-    border-radius: 4px;
-    background: var(--app-bg-soft);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
     color: var(--app-text);
-    width: 100px;
+    font-size: 13px;
+    outline: none;
+  }
+  .deal-edit-form .wide {
+    grid-column: 1 / -1;
+  }
+  .deal-edit-buttons {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+  }
+  .deal-edit-buttons button {
+    flex: 1;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
   }
   .deal-time-since {
     font-size: 11px;
@@ -452,6 +516,52 @@
   }
 
   .empty { text-align: center; color: var(--app-muted); padding: 20px; }
+  .backup-panel {
+    margin-top: 20px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--app-border);
+    background: linear-gradient(135deg, rgba(50, 245, 163, 0.1), rgba(142, 92, 255, 0.12)), var(--app-panel);
+  }
+  .backup-panel textarea {
+    width: 100%;
+    min-height: 110px;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--app-text);
+    font-size: 12px;
+    resize: vertical;
+    user-select: text;
+  }
+  .backup-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .backup-actions button {
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--app-text);
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .backup-actions button.primary {
+    background: var(--app-gradient);
+    color: #07100d;
+  }
+  .backup-hint {
+    margin-top: 6px;
+    color: var(--app-muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
   
   .editing {
     background: var(--app-gradient);
@@ -530,6 +640,15 @@
 <div class="view" id="historyView">
   <div class="section-title">📜 История сделок</div>
   <div class="sort-controls">
+    <div class="history-filter-row">
+      <button class="history-filter-btn active" id="historyTypeAll" onclick="setHistoryTypeFilter('all')">Все</button>
+      <button class="history-filter-btn" id="historyTypeBuy" onclick="setHistoryTypeFilter('buy')">Покупки</button>
+      <button class="history-filter-btn" id="historyTypeSell" onclick="setHistoryTypeFilter('sell')">Продажи</button>
+      <button class="history-filter-btn" id="historyTypeDeposit" onclick="setHistoryTypeFilter('deposit')">Бонусы</button>
+    </div>
+    <select class="history-bank-filter" id="historyBankFilter" onchange="setHistoryBankFilter(this.value)">
+      <option value="">Все банки</option>
+    </select>
     <button class="sort-btn" id="sortBtn" onclick="toggleSortOrder()">⬇️ Сортировка: новые сверху</button>
   </div>
   <div id="history"></div>
@@ -558,6 +677,18 @@
     <div class="section-title">📊 Банки сегодня</div>
     <div id="bankStats"></div>
   </div>
+
+  <div class="backup-panel">
+    <div class="section-title" style="margin:0;">🧰 Резервная копия</div>
+    <div class="backup-hint">Экспортируй JSON перед крупными правками. Для восстановления вставь копию в поле и нажми импорт.</div>
+    <textarea id="backupData" placeholder="Здесь появится резервная копия или сюда можно вставить JSON для импорта"></textarea>
+    <div class="backup-actions">
+      <button class="primary" onclick="exportBackup()">Экспорт</button>
+      <button onclick="copyBackup()">Скопировать</button>
+      <button onclick="importBackup()">Импорт</button>
+      <button onclick="clearBackupField()">Очистить</button>
+    </div>
+  </div>
 </div>
 
 <!-- Нижняя навигация -->
@@ -574,7 +705,7 @@ tg.expand();
 
 // ---- Скрытие клавиатуры на iPhone ----
 function blurActiveElement() {
-  if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+  if (document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
     document.activeElement.blur();
   }
 }
@@ -582,13 +713,13 @@ function blurActiveElement() {
 // Глобальный обработчик на touchstart и click
 document.addEventListener('touchstart', function(e) {
   const target = e.target;
-  if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'BUTTON') {
+  if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'TEXTAREA' && target.tagName !== 'BUTTON') {
     blurActiveElement();
   }
 });
 document.addEventListener('click', function(e) {
   const target = e.target;
-  if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'BUTTON') {
+  if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'TEXTAREA' && target.tagName !== 'BUTTON') {
     blurActiveElement();
   }
 });
@@ -606,6 +737,8 @@ let banks = [];
 let editingDealId = null;
 let sortDesc = true;
 let currentStatsPeriod = 'all';
+let historyTypeFilter = 'all';
+let historyBankFilter = '';
 const STORAGE_CHUNK_SIZE = 3000;
 
 // ---- Функции перемещения банков (кнопки) ----
@@ -679,6 +812,7 @@ function switchPage(page) {
   if (isTrade) {
     renderBankOptions();
   } else if (isHistory) {
+    renderHistoryBankOptions();
     renderHistory();
   } else if (isBanks) {
     renderBanksList();
@@ -702,6 +836,20 @@ function setStatsPeriod(period) {
     if (btn) btn.classList.toggle('active', key === period);
   });
   updateStats();
+}
+
+function setHistoryTypeFilter(type) {
+  historyTypeFilter = type;
+  ['all', 'buy', 'sell', 'deposit'].forEach(key => {
+    const btn = document.getElementById('historyType' + key.charAt(0).toUpperCase() + key.slice(1));
+    if (btn) btn.classList.toggle('active', key === type);
+  });
+  renderHistory();
+}
+
+function setHistoryBankFilter(bankName) {
+  historyBankFilter = bankName;
+  renderHistory();
 }
 
 function resetTradeForm() {
@@ -738,6 +886,7 @@ function addBank() {
   input.value = '';
   saveData();
   renderBankOptions();
+  renderHistoryBankOptions();
   renderBanksList();
   renderBankStats();
   updateStats();
@@ -756,6 +905,7 @@ function deleteBank(id) {
       banks = banks.filter(b => b.id !== id);
       saveData();
       renderBankOptions();
+      renderHistoryBankOptions();
       renderBanksList();
       renderBankStats();
       updateStats();
@@ -798,6 +948,25 @@ function renderBankOptions() {
       const heat = getBankHeat(b.name);
       return `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)} — ${heat.label}</option>`;
     }).join('');
+}
+
+function getAllBankNames() {
+  const names = [];
+  banks.forEach(b => { if (b.name) names.push(b.name); });
+  deals.forEach(d => { if (d.bank) names.push(d.bank); });
+  return [...new Set(names.map(name => String(name).trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+function renderHistoryBankOptions() {
+  const select = document.getElementById('historyBankFilter');
+  if (!select) return;
+  const names = getAllBankNames();
+  const current = historyBankFilter;
+  select.innerHTML = '<option value="">Все банки</option>' +
+    names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  select.value = names.includes(current) ? current : '';
+  historyBankFilter = select.value;
 }
 
 function checkBank() {
@@ -873,7 +1042,7 @@ function addDeal() {
   blurActiveElement();
 }
 
-// ---- Удаление и редактирование даты ----
+// ---- Удаление и редактирование сделки ----
 function deleteDeal(id) {
   tg.showConfirm('Удалить сделку?', (ok) => {
     if (ok) {
@@ -884,34 +1053,128 @@ function deleteDeal(id) {
   });
 }
 
-function startEditDate(id) {
+function startEditDeal(id) {
   editingDealId = id;
   render();
 }
 
-function saveEditDate(id) {
-  const input = document.getElementById(`deal-date-${id}`);
-  const newDate = input.value;
-  if (!newDate) { tg.showAlert('Выберите дату!'); return; }
+function getDealDateInputValue(deal) {
+  const timestamp = getDealTimestamp(deal);
+  const date = timestamp ? new Date(timestamp) : new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getDealTimeInputValue(deal) {
+  if (deal.time) return deal.time;
+  const timestamp = getDealTimestamp(deal);
+  if (!timestamp) return '00:00';
+  return new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderEditBankSelect(deal) {
+  const names = getAllBankNames();
+  if (deal.bank && !names.includes(deal.bank)) names.push(deal.bank);
+  return names
+    .sort((a, b) => a.localeCompare(b, 'ru'))
+    .map(name => `<option value="${escapeHtml(name)}" ${name === deal.bank ? 'selected' : ''}>${escapeHtml(name)}</option>`)
+    .join('');
+}
+
+function updateEditDealFields(id) {
+  const type = document.getElementById(`edit-type-${id}`).value;
+  const rubWrap = document.getElementById(`edit-rub-wrap-${id}`);
+  const bankWrap = document.getElementById(`edit-bank-wrap-${id}`);
+  if (rubWrap) rubWrap.style.display = type === 'deposit' ? 'none' : 'block';
+  if (bankWrap) bankWrap.style.display = type === 'sell' ? 'block' : 'none';
+}
+
+function saveEditDeal(id) {
   const deal = deals.find(d => d.id === id);
   if (!deal) return;
-  const parts = newDate.split('-');
-  const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  const type = document.getElementById(`edit-type-${id}`).value;
+  const dateValue = document.getElementById(`edit-date-${id}`).value;
+  const timeValue = document.getElementById(`edit-time-${id}`).value || '00:00';
+  const usdt = parseFloat(document.getElementById(`edit-usdt-${id}`).value) || 0;
+  const rub = type === 'deposit' ? 0 : (parseFloat(document.getElementById(`edit-rub-${id}`).value) || 0);
+  const bank = document.getElementById(`edit-bank-${id}`)?.value || '';
+
+  if (!dateValue) { tg.showAlert('Выберите дату!'); return; }
+  if (usdt <= 0) { tg.showAlert('USDT должен быть больше нуля!'); return; }
+  if (type !== 'deposit' && rub <= 0) { tg.showAlert('Сумма рублей должна быть больше нуля!'); return; }
+  if (type === 'sell' && !bank) { tg.showAlert('Выберите банк для продажи!'); return; }
+
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const [hour, minute] = timeValue.split(':').map(Number);
+  const dateObj = new Date(year, month - 1, day, hour || 0, minute || 0, 0, 0);
+
+  deal.type = type;
+  deal.rub = rub;
+  deal.usdt = usdt;
+  deal.rate = type === 'deposit' ? 0 : rub / usdt;
   deal.date = dateObj.toLocaleDateString('ru-RU');
+  deal.time = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   deal.timestamp = dateObj.getTime();
-  if (deal.time) {
-    const [h,m] = deal.time.split(':');
-    dateObj.setHours(parseInt(h), parseInt(m));
-    deal.timestamp = dateObj.getTime();
-  }
+  if (type === 'sell') deal.bank = bank;
+  else delete deal.bank;
+
+  if (bank) addNormalizedBank(banks, bank);
+  banks = normalizeBanks(banks);
+
   editingDealId = null;
   saveData();
+  renderBankOptions();
+  renderHistoryBankOptions();
   render();
 }
 
-function cancelEditDate() {
+function cancelEditDeal() {
   editingDealId = null;
   render();
+}
+
+function buildDealEditForm(d) {
+  return `
+    <div class="deal-edit-form">
+      <div>
+        <label>Тип</label>
+        <select id="edit-type-${d.id}" onchange="updateEditDealFields(${d.id})">
+          <option value="buy" ${d.type === 'buy' ? 'selected' : ''}>Покупка</option>
+          <option value="sell" ${d.type === 'sell' ? 'selected' : ''}>Продажа</option>
+          <option value="deposit" ${d.type === 'deposit' ? 'selected' : ''}>Бонус</option>
+        </select>
+      </div>
+      <div>
+        <label>USDT</label>
+        <input type="number" id="edit-usdt-${d.id}" value="${d.usdt || 0}" inputmode="decimal">
+      </div>
+      <div id="edit-rub-wrap-${d.id}" style="${d.type === 'deposit' ? 'display:none;' : ''}">
+        <label>Рубли</label>
+        <input type="number" id="edit-rub-${d.id}" value="${d.rub || 0}" inputmode="numeric">
+      </div>
+      <div id="edit-bank-wrap-${d.id}" style="${d.type === 'sell' ? '' : 'display:none;'}">
+        <label>Банк</label>
+        <select id="edit-bank-${d.id}">
+          <option value="">Выбери банк</option>
+          ${renderEditBankSelect(d)}
+        </select>
+      </div>
+      <div>
+        <label>Дата</label>
+        <input type="date" id="edit-date-${d.id}" value="${getDealDateInputValue(d)}">
+      </div>
+      <div>
+        <label>Время</label>
+        <input type="time" id="edit-time-${d.id}" value="${getDealTimeInputValue(d)}">
+      </div>
+      <div class="deal-edit-buttons">
+        <button class="btn-save-edit" onclick="saveEditDeal(${d.id})">Сохранить</button>
+        <button class="btn-cancel-edit" onclick="cancelEditDeal()">Отмена</button>
+      </div>
+    </div>
+  `;
 }
 
 // ---- Вспомогательные функции ----
@@ -1045,7 +1308,18 @@ function renderHistory() {
     return;
   }
 
-  const sorted = [...deals].sort((a, b) => {
+  const filteredDeals = deals.filter(d => {
+    const typeMatches = historyTypeFilter === 'all' || d.type === historyTypeFilter;
+    const bankMatches = !historyBankFilter || (d.bank && d.bank.toLowerCase() === historyBankFilter.toLowerCase());
+    return typeMatches && bankMatches;
+  });
+
+  if (!filteredDeals.length) {
+    container.innerHTML = '<div class="empty">По фильтру сделок нет</div>';
+    return;
+  }
+
+  const sorted = [...filteredDeals].sort((a, b) => {
     const timeA = a.timestamp || 0;
     const timeB = b.timestamp || 0;
     return sortDesc ? timeB - timeA : timeA - timeB;
@@ -1070,19 +1344,10 @@ function renderHistory() {
 
     let actionsHtml;
     if (isEditing) {
-      let dateObj = d.timestamp ? new Date(d.timestamp) : (() => {
-        const parts = d.date.split('.');
-        return new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
-      })();
-      const dateStr = dateObj.toISOString().split('T')[0];
-      actionsHtml = `
-        <input type="date" id="deal-date-${d.id}" value="${dateStr}" class="deal-edit-date">
-        <button class="btn-save-edit" onclick="saveEditDate(${d.id})">💾</button>
-        <button class="btn-cancel-edit" onclick="cancelEditDate()">✖</button>
-      `;
+      actionsHtml = '';
     } else {
       actionsHtml = `
-        <button class="btn-edit" onclick="startEditDate(${d.id})">📅</button>
+        <button class="btn-edit" onclick="startEditDeal(${d.id})">✏️</button>
         <button class="deal-delete" onclick="deleteDeal(${d.id})">🗑</button>
       `;
     }
@@ -1094,6 +1359,7 @@ function renderHistory() {
           <div class="deal-sub">${d.date} ${d.time || ''}</div>
           ${d.bank ? `<div class="deal-bank">🏦 ${escapeHtml(d.bank)}</div>` : ''}
           ${d.timestamp ? `<div class="deal-time-since ${timeClass}">⏱ ${timeSince}</div>` : ''}
+          ${isEditing ? buildDealEditForm(d) : ''}
         </div>
         <div class="deal-actions">${actionsHtml}</div>
       </div>
@@ -1219,6 +1485,96 @@ function formatRub(n) {
 
 function escapeHtml(v) {
   return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+}
+
+function buildBackupPayload() {
+  return {
+    app: 'telegram-p2p-calculator',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    deals,
+    banks
+  };
+}
+
+function exportBackup() {
+  const textarea = document.getElementById('backupData');
+  textarea.value = JSON.stringify(buildBackupPayload(), null, 2);
+  textarea.focus();
+  textarea.select();
+  tg.showAlert('Резервная копия готова. Скопируй текст и сохрани в заметки или файл.');
+}
+
+async function copyBackup() {
+  const textarea = document.getElementById('backupData');
+  if (!textarea.value.trim()) exportBackup();
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+    tg.showAlert('Резервная копия скопирована.');
+  } catch (e) {
+    textarea.focus();
+    textarea.select();
+    tg.showAlert('Не удалось скопировать автоматически. Текст выделен, скопируй вручную.');
+  }
+}
+
+function normalizeImportedDeals(value) {
+  if (!Array.isArray(value)) return null;
+  return value
+    .filter(d => d && ['buy', 'sell', 'deposit'].includes(d.type))
+    .map(d => {
+      const rub = parseFloat(d.rub) || 0;
+      const usdt = parseFloat(d.usdt) || 0;
+      const timestamp = d.timestamp || Date.now();
+      const dateObj = new Date(timestamp);
+      const normalized = {
+        id: d.id || Date.now() + Math.random(),
+        type: d.type,
+        rub: d.type === 'deposit' ? 0 : rub,
+        usdt,
+        rate: d.type === 'deposit' ? 0 : (parseFloat(d.rate) || (usdt > 0 ? rub / usdt : 0)),
+        date: d.date || dateObj.toLocaleDateString('ru-RU'),
+        time: d.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        timestamp
+      };
+      if (d.type === 'sell' && d.bank) normalized.bank = String(d.bank).trim();
+      return normalized;
+    });
+}
+
+function importBackup() {
+  const raw = document.getElementById('backupData').value.trim();
+  if (!raw) { tg.showAlert('Вставь JSON резервной копии в поле.'); return; }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    tg.showAlert('Не удалось прочитать JSON. Проверь, что копия вставлена полностью.');
+    return;
+  }
+
+  const importedDeals = normalizeImportedDeals(Array.isArray(parsed) ? parsed : parsed.deals);
+  const importedBanks = Array.isArray(parsed.banks) ? parsed.banks : [];
+  if (!importedDeals) {
+    tg.showAlert('В резервной копии не найдена история сделок.');
+    return;
+  }
+
+  tg.showConfirm('Импорт заменить текущие сделки и банки?', (ok) => {
+    if (!ok) return;
+    deals = importedDeals;
+    banks = normalizeBanks(importedBanks);
+    saveData();
+    renderBankOptions();
+    renderHistoryBankOptions();
+    render();
+    tg.showAlert('Резервная копия импортирована.');
+  });
+}
+
+function clearBackupField() {
+  document.getElementById('backupData').value = '';
 }
 
 function cloudGetItem(key) {
