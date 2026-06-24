@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>P2P Калькулятор</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
+  body {
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    padding: 16px;
+    padding-bottom: 82px;
+    user-select: none;
+  }
+  
+  /* Убираем стрелочки у всех числовых полей */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    padding: 14px;
+    border-radius: 12px;
+    text-align: center;
+  }
+  .stat-label { font-size: 12px; opacity: 0.6; margin-bottom: 4px; }
+  .stat-value { font-size: 18px; font-weight: bold; }
+  .profit-positive { color: #2ecc71; }
+  .profit-negative { color: #e74c3c; }
+
+  .mode-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .mode-main {
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    color: var(--tg-theme-text-color, #000);
+    transition: all 0.2s;
+  }
+  .mode-main.active {
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+  }
+  .mode-sub {
+    display: flex;
+    gap: 8px;
+  }
+  .mode-sub button {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    color: var(--tg-theme-text-color, #000);
+    transition: all 0.2s;
+  }
+  .mode-sub button.active {
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+  }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .form { margin-bottom: 20px; }
+  .input-group { margin-bottom: 12px; }
+  .input-group label { display: block; font-size: 13px; margin-bottom: 6px; opacity: 0.7; }
+  .input-group input,
+  .input-group select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--tg-theme-hint-color, #ccc);
+    border-radius: 10px;
+    font-size: 16px;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+  }
+
+  .bank-warning {
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: none;
+    line-height: 1.5;
+  }
+  .bank-warning.show { display: block; }
+  .warning-red { background: #f8d7da; color: #721c24; }
+  .warning-yellow { background: #fff3cd; color: #856404; }
+  .warning-green { background: #d4edda; color: #155724; }
+
+  .rate-preview {
+    font-size: 13px;
+    opacity: 0.6;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+  .btn-add {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .btn-edit {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 6px;
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 4px;
+  }
+  .btn-save-edit {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #2ecc71;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 4px;
+  }
+  .btn-cancel-edit {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #e74c3c;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    margin-right: 4px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 20px 0 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .turnover-display {
+    font-size: 14px;
+    font-weight: normal;
+    opacity: 0.8;
+  }
+
+  .sort-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+  }
+  .sort-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--tg-theme-hint-color, #ccc);
+    border-radius: 8px;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .sort-btn:hover {
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  }
+
+  .bank-card,
+  .bank-stat {
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  
+  .bank-card-header,
+  .bank-stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    font-size: 15px;
+    gap: 8px;
+  }
+  .bank-name-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .bank-move-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .bank-move-btn {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--tg-theme-text-color, #000);
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    line-height: 1;
+  }
+  .bank-move-btn:active {
+    opacity: 1;
+  }
+  .bank-move-btn:disabled {
+    opacity: 0.2;
+    pointer-events: none;
+  }
+  .bank-name {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
+  .bank-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    font-weight: normal;
+    white-space: nowrap;
+  }
+  .badge-ok { background: #d4edda; color: #155724; }
+  .badge-warn { background: #fff3cd; color: #856404; }
+  .badge-danger { background: #f8d7da; color: #721c24; }
+  .bank-delete {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+
+  .bank-card-sub,
+  .bank-stat-sub {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+  .bank-balance-input {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bank-balance-input label {
+    font-size: 12px;
+    opacity: 0.6;
+    white-space: nowrap;
+  }
+  .bank-balance-input input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--tg-theme-hint-color, #ccc);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    width: 100%;
+  }
+
+  .deal {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  }
+  .deal-buy { border-left: 4px solid #2ecc71; }
+  .deal-sell { border-left: 4px solid #e74c3c; }
+  .deal-deposit { border-left: 4px solid #f39c12; }
+  .deal-info { font-size: 14px; flex: 1; }
+  .deal-sub { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+  .deal-bank { font-size: 12px; color: #3390ec; margin-top: 2px; }
+  .deal-actions { display: flex; gap: 4px; align-items: center; }
+  .deal-delete {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .deal-edit-date {
+    font-size: 11px;
+    padding: 2px 6px;
+    border: 1px solid var(--tg-theme-hint-color, #ccc);
+    border-radius: 4px;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    width: 100px;
+  }
+  .deal-time-since {
+    font-size: 11px;
+    opacity: 0.6;
+    margin-top: 2px;
+    color: #3390ec;
+  }
+  .deal-time-since.warning {
+    color: #e74c3c;
+  }
+  .deal-time-since.ok {
+    color: #2ecc71;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--tg-theme-bg-color, #fff);
+    border-top: 1px solid var(--tg-theme-hint-color, #ddd);
+    z-index: 10;
+  }
+  .bottom-nav button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 12px;
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    color: var(--tg-theme-text-color, #000);
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .bottom-nav button.active {
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+  }
+
+  .empty { text-align: center; opacity: 0.5; padding: 20px; }
+  
+  .editing {
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+  }
+</style>
+</head>
+<body>
+
+<!-- Верхние карточки статистики -->
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-label">💰 Прибыль</div>
+    <div class="stat-value" id="profit">0 ₽</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">🪙 Баланс USDT</div>
+    <div class="stat-value" id="balanceUsdt">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">💵 Баланс ₽</div>
+    <div class="stat-value" id="balanceRub">0 ₽</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">🏦 Остаток на банках</div>
+    <div class="stat-value" id="bankBalanceTotal">0 ₽</div>
+  </div>
+</div>
+
+<!-- Вкладка "Сделки" -->
+<div class="view active" id="tradeView">
+  <div class="mode-buttons">
+    <button class="mode-main active" id="modeBuy" onclick="setMode('buy')">📥 Покупка</button>
+    <div class="mode-sub">
+      <button id="modeSell" onclick="setMode('sell')">📤 Продажа</button>
+      <button id="modeDeposit" onclick="setMode('deposit')">💰 Бонусы</button>
+    </div>
+  </div>
+
+  <div class="form">
+    <div class="input-group" id="rubGroup">
+      <label id="labelRub">Потратил рублей</label>
+      <input type="number" id="inputRub" placeholder="0" value="0" 
+             onfocus="this.select()" oninput="updateRate(); checkBank();" 
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+             enterkeyhint="done" inputmode="numeric">
+    </div>
+    <div class="input-group">
+      <label id="labelUsdt">Количество USDT</label>
+      <input type="number" id="inputUsdt" placeholder="0" value="0" 
+             onfocus="this.select()" oninput="updateRate()" 
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+             enterkeyhint="done" inputmode="numeric">
+    </div>
+
+    <div class="input-group" id="bankGroup" style="display:none;">
+      <label>🏦 Банк для продажи</label>
+      <select id="inputBank" onchange="checkBank()"></select>
+    </div>
+
+    <div class="bank-warning" id="bankWarning"></div>
+
+    <div class="rate-preview" id="ratePreview">Курс: —</div>
+    <button class="btn-add" onclick="addDeal(); blurActiveElement();">Добавить сделку</button>
+  </div>
+</div>
+
+<!-- Вкладка "История" -->
+<div class="view" id="historyView">
+  <div class="section-title">
+    <span>📜 История сделок</span>
+    <span class="turnover-display" id="turnoverDisplay">Оборот: 0 ₽</span>
+  </div>
+  <div class="sort-controls">
+    <button class="sort-btn" id="sortBtn" onclick="toggleSortOrder()">⬇️ Сортировка: новые сверху</button>
+  </div>
+  <div id="history"></div>
+</div>
+
+<!-- Вкладка "Банки" -->
+<div class="view" id="banksView">
+  <div class="section-title">🏦 Мои банки</div>
+
+  <div class="form">
+    <div class="input-group">
+      <label>Название банка</label>
+      <input type="text" id="newBankName" placeholder="Например: Сбер" 
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); addBank();}"
+             enterkeyhint="done">
+    </div>
+    <button class="btn-add" onclick="addBank(); blurActiveElement();">Добавить банк</button>
+  </div>
+
+  <div id="banksList"></div>
+
+  <div id="bankStatsSection">
+    <div class="section-title">📊 Банки сегодня</div>
+    <div id="bankStats"></div>
+  </div>
+</div>
+
+<!-- Нижняя навигация -->
+<div class="bottom-nav">
+  <button class="active" id="bottomTrade" onclick="switchPage('trade')">💱 Сделки</button>
+  <button id="bottomHistory" onclick="switchPage('history')">📜 История</button>
+  <button id="bottomBanks" onclick="switchPage('banks')">🏦 Банки</button>
+</div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+// ---- Скрытие клавиатуры на iPhone ----
+function blurActiveElement() {
+  if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+    document.activeElement.blur();
+  }
+}
+
+// Глобальный обработчик на touchstart и click
+document.addEventListener('touchstart', function(e) {
+  const target = e.target;
+  if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'BUTTON') {
+    blurActiveElement();
+  }
+});
+document.addEventListener('click', function(e) {
+  const target = e.target;
+  if (target.tagName !== 'INPUT' && target.tagName !== 'SELECT' && target.tagName !== 'BUTTON') {
+    blurActiveElement();
+  }
+});
+
+// ---- Остальные глобальные переменные ----
+const LIMIT_DAILY = 100000;
+const LIMIT_BIG = 40000;
+const MAX_BIG_DEALS = 1;
+const HEAT_WARN_PERCENT = 70;
+
+let currentMode = 'buy';
+let currentPage = 'trade';
+let deals = [];
+let banks = [];
+let editingDealId = null;
+let sortDesc = true;
+
+// ---- Функции перемещения банков (кнопки) ----
+function moveBank(id, direction) {
+  const index = banks.findIndex(b => b.id === id);
+  if (index === -1) return;
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= banks.length) return;
+  const [bank] = banks.splice(index, 1);
+  banks.splice(newIndex, 0, bank);
+  saveData();
+  renderBanksList();
+  renderBankOptions();
+  renderBankStats();
+  updateStats();
+}
+
+// ---- Установка режима ----
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('modeBuy').classList.toggle('active', mode === 'buy');
+  document.getElementById('modeSell').classList.toggle('active', mode === 'sell');
+  document.getElementById('modeDeposit').classList.toggle('active', mode === 'deposit');
+
+  const rubGroup = document.getElementById('rubGroup');
+  const bankGroup = document.getElementById('bankGroup');
+  const rubLabel = document.getElementById('labelRub');
+  const usdtLabel = document.getElementById('labelUsdt');
+  const warningEl = document.getElementById('bankWarning');
+  const ratePreview = document.getElementById('ratePreview');
+
+  warningEl.classList.remove('show');
+
+  if (mode === 'deposit') {
+    rubGroup.style.display = 'none';
+    bankGroup.style.display = 'none';
+    ratePreview.textContent = '💰 Пополнение баланса USDT';
+    usdtLabel.textContent = 'Количество USDT (бонус)';
+  } else if (mode === 'buy') {
+    rubGroup.style.display = 'block';
+    bankGroup.style.display = 'none';
+    rubLabel.textContent = 'Потратил рублей';
+    usdtLabel.textContent = 'Получил USDT';
+    updateRate();
+  } else { // sell
+    rubGroup.style.display = 'block';
+    bankGroup.style.display = 'block';
+    rubLabel.textContent = 'Получил рублей';
+    usdtLabel.textContent = 'Отдал USDT';
+    renderBankOptions();
+    updateRate();
+    checkBank();
+  }
+}
+
+// ---- Переключение страниц ----
+function switchPage(page) {
+  currentPage = page;
+  const isTrade = page === 'trade';
+  const isHistory = page === 'history';
+  const isBanks = page === 'banks';
+
+  document.getElementById('tradeView').classList.toggle('active', isTrade);
+  document.getElementById('historyView').classList.toggle('active', isHistory);
+  document.getElementById('banksView').classList.toggle('active', isBanks);
+
+  document.getElementById('bottomTrade').classList.toggle('active', isTrade);
+  document.getElementById('bottomHistory').classList.toggle('active', isHistory);
+  document.getElementById('bottomBanks').classList.toggle('active', isBanks);
+
+  if (isTrade) {
+    renderBankOptions();
+  } else if (isHistory) {
+    renderHistory();
+  } else if (isBanks) {
+    renderBanksList();
+    renderBankStats();
+  }
+  blurActiveElement();
+  updateStats();
+}
+
+// ---- Сортировка истории ----
+function toggleSortOrder() {
+  sortDesc = !sortDesc;
+  document.getElementById('sortBtn').textContent = sortDesc ? '⬇️ Сортировка: новые сверху' : '⬆️ Сортировка: старые сверху';
+  renderHistory();
+}
+
+function resetTradeForm() {
+  document.getElementById('inputRub').value = '0';
+  document.getElementById('inputUsdt').value = '0';
+  document.getElementById('bankWarning').classList.remove('show');
+  updateRate();
+}
+
+function updateRate() {
+  if (currentMode === 'deposit') {
+    document.getElementById('ratePreview').textContent = '💰 Пополнение баланса USDT';
+    return;
+  }
+  const rub = parseFloat(document.getElementById('inputRub').value) || 0;
+  const usdt = parseFloat(document.getElementById('inputUsdt').value) || 0;
+  if (rub > 0 && usdt > 0) {
+    document.getElementById('ratePreview').textContent = `Курс: ${(rub/usdt).toFixed(2)} ₽/USDT`;
+  } else {
+    document.getElementById('ratePreview').textContent = 'Курс: —';
+  }
+}
+
+// ---- Банки ----
+function addBank() {
+  const input = document.getElementById('newBankName');
+  const name = input.value.trim();
+  if (!name) { tg.showAlert('Введи название банка!'); return; }
+  if (banks.some(b => b.name.toLowerCase() === name.toLowerCase())) {
+    tg.showAlert('Такой банк уже есть!');
+    return;
+  }
+  banks.push({ id: Date.now(), name, balance: 0 });
+  input.value = '';
+  saveData();
+  renderBankOptions();
+  renderBanksList();
+  renderBankStats();
+  updateStats();
+  blurActiveElement();
+}
+
+function deleteBank(id) {
+  const bank = banks.find(b => b.id === id);
+  if (!bank) return;
+  if (deals.some(d => d.bank && d.bank.toLowerCase() === bank.name.toLowerCase())) {
+    tg.showAlert('Этот банк уже есть в истории сделок, его нельзя удалить.');
+    return;
+  }
+  tg.showConfirm('Удалить банк?', (ok) => {
+    if (ok) {
+      banks = banks.filter(b => b.id !== id);
+      saveData();
+      renderBankOptions();
+      renderBanksList();
+      renderBankStats();
+      updateStats();
+    }
+  });
+}
+
+// ОБНОВЛЕННАЯ функция обновления остатка - без перерисовки списка
+function updateBankBalance(id, value) {
+  const bank = banks.find(b => b.id === id);
+  if (!bank) return;
+  const num = parseFloat(value) || 0;
+  bank.balance = num;
+  saveData();
+  // Обновляем только статистику, не трогая список банков
+  updateStats();
+  // Обновляем значение в поле ввода (на случай, если оно изменилось из-за saveData, но у нас это не так)
+  // Можно также синхронизировать другие вкладки, но они не показывают остатки напрямую.
+}
+
+// Новая функция обновления статистики (без перерисовки списка банков)
+function updateStats() {
+  const stats = calculate();
+  document.getElementById('profit').textContent = formatRub(stats.profit);
+  document.getElementById('profit').className = 'stat-value ' + (stats.profit >= 0 ? 'profit-positive' : 'profit-negative');
+  document.getElementById('balanceUsdt').textContent = stats.balanceUsdt.toFixed(2);
+  document.getElementById('balanceRub').textContent = formatRub(stats.balanceRub);
+  document.getElementById('bankBalanceTotal').textContent = formatRub(stats.totalBankBalance);
+  document.getElementById('turnoverDisplay').textContent = `Оборот: ${formatRub(stats.turnover)}`;
+}
+
+function renderBankOptions() {
+  const select = document.getElementById('inputBank');
+  if (!banks.length) {
+    select.innerHTML = '<option value="">Сначала добавь банк внизу: Банки</option>';
+    return;
+  }
+  select.innerHTML = '<option value="">Выбери банк</option>' +
+    banks.map(b => {
+      const heat = getBankHeat(b.name);
+      return `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)} — ${heat.label}</option>`;
+    }).join('');
+}
+
+function checkBank() {
+  if (currentMode !== 'sell') return;
+  const bankName = document.getElementById('inputBank').value;
+  const warningEl = document.getElementById('bankWarning');
+  const currentRub = parseFloat(document.getElementById('inputRub').value) || 0;
+  if (!bankName) { warningEl.classList.remove('show'); return; }
+
+  const heat = getBankHeat(bankName, currentRub);
+  const msgs = [];
+  if (heat.totalWithCurrent > LIMIT_DAILY) {
+    msgs.push(`🔴 Перегрев счёта! На «${bankName}» за день будет ${formatRub(heat.totalWithCurrent)} из ${formatRub(LIMIT_DAILY)}`);
+  } else if (heat.percentWithCurrent >= HEAT_WARN_PERCENT) {
+    msgs.push(`🟡 Банк близко к перегреву: ${heat.percentWithCurrent}% дневного лимита`);
+  }
+  if (heat.bigWithCurrent > MAX_BIG_DEALS) {
+    msgs.push(`🟡 Много крупных сделок: ${heat.bigWithCurrent} сделок свыше ${formatRub(LIMIT_BIG)}`);
+  }
+  if (!msgs.length && heat.count > 0) {
+    msgs.push(`✅ По банку «${bankName}» сегодня ${heat.count} сделок на ${formatRub(heat.total)}`);
+  }
+  if (msgs.length) {
+    warningEl.innerHTML = msgs.join('<br>');
+    warningEl.className = 'bank-warning show warning-' + heat.levelWithCurrent;
+  } else {
+    warningEl.classList.remove('show');
+  }
+}
+
+// ---- Добавление сделки ----
+function addDeal() {
+  const usdt = parseFloat(document.getElementById('inputUsdt').value) || 0;
+  let rub = parseFloat(document.getElementById('inputRub').value) || 0;
+  const bank = document.getElementById('inputBank').value;
+
+  if (usdt <= 0) {
+    tg.showAlert('Укажите количество USDT больше нуля!');
+    return;
+  }
+
+  if (currentMode === 'deposit') {
+    rub = 0;
+  } else {
+    if (rub <= 0) {
+      tg.showAlert('Укажите сумму рублей больше нуля!');
+      return;
+    }
+    if (currentMode === 'sell') {
+      if (!banks.length) { tg.showAlert('Сначала добавьте банк во вкладке "Банки"!'); return; }
+      if (!bank) { tg.showAlert('Выберите банк для продажи!'); return; }
+    }
+  }
+
+  const now = new Date();
+  const deal = {
+    id: Date.now(),
+    type: currentMode,
+    rub: rub,
+    usdt: usdt,
+    rate: currentMode === 'deposit' ? 0 : rub / usdt,
+    date: now.toLocaleDateString('ru-RU'),
+    time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+    timestamp: now.getTime()
+  };
+  if (currentMode === 'sell') deal.bank = bank;
+
+  deals.push(deal);
+  resetTradeForm();
+  renderBankOptions();
+  saveData();
+  render(); // перерисовывает все вкладки, но у нас не останавливает фокус, потому что мы не вводим в тот момент
+  blurActiveElement();
+}
+
+// ---- Удаление и редактирование даты ----
+function deleteDeal(id) {
+  tg.showConfirm('Удалить сделку?', (ok) => {
+    if (ok) {
+      deals = deals.filter(d => d.id !== id);
+      saveData();
+      render();
+    }
+  });
+}
+
+function startEditDate(id) {
+  editingDealId = id;
+  render();
+}
+
+function saveEditDate(id) {
+  const input = document.getElementById(`deal-date-${id}`);
+  const newDate = input.value;
+  if (!newDate) { tg.showAlert('Выберите дату!'); return; }
+  const deal = deals.find(d => d.id === id);
+  if (!deal) return;
+  const parts = newDate.split('-');
+  const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  deal.date = dateObj.toLocaleDateString('ru-RU');
+  deal.timestamp = dateObj.getTime();
+  if (deal.time) {
+    const [h,m] = deal.time.split(':');
+    dateObj.setHours(parseInt(h), parseInt(m));
+    deal.timestamp = dateObj.getTime();
+  }
+  editingDealId = null;
+  saveData();
+  render();
+}
+
+function cancelEditDate() {
+  editingDealId = null;
+  render();
+}
+
+// ---- Вспомогательные функции ----
+function getTimeSince(timestamp) {
+  if (!timestamp) return '';
+  const diff = Date.now() - timestamp;
+  if (diff < 60000) return 'только что';
+  if (diff < 3600000) return Math.floor(diff/60000) + ' мин назад';
+  if (diff < 86400000) {
+    const h = Math.floor(diff/3600000);
+    const m = Math.floor((diff%3600000)/60000);
+    return `${h} ч ${m} мин назад`;
+  }
+  return Math.floor(diff/86400000) + ' дн назад';
+}
+
+function getLastDealTime(bankName) {
+  const filtered = deals
+    .filter(d => d.type === 'sell' && d.bank && d.bank.toLowerCase() === bankName.toLowerCase())
+    .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+  return filtered.length ? filtered[0].timestamp : null;
+}
+
+function getBankHeat(bankName, currentRub = 0) {
+  const today = new Date().toLocaleDateString('ru-RU');
+  const todaySells = deals.filter(d =>
+    d.type === 'sell' && d.bank && d.bank.toLowerCase() === bankName.toLowerCase() && d.date === today
+  );
+  const total = todaySells.reduce((s,d) => s + d.rub, 0);
+  const count = todaySells.length;
+  const big = todaySells.filter(d => d.rub > LIMIT_BIG).length;
+  const totalWithCurrent = total + currentRub;
+  const bigWithCurrent = big + (currentRub > LIMIT_BIG ? 1 : 0);
+  const percent = Math.round((total / LIMIT_DAILY) * 100);
+  const percentWithCurrent = Math.round((totalWithCurrent / LIMIT_DAILY) * 100);
+
+  let level = 'green', label = `OK ${percent}%`;
+  if (total > LIMIT_DAILY || big > MAX_BIG_DEALS) { level = 'red'; label = 'Перегрет'; }
+  else if (percent >= HEAT_WARN_PERCENT) { level = 'yellow'; label = `Риск ${percent}%`; }
+
+  let levelWithCurrent = 'green';
+  if (totalWithCurrent > LIMIT_DAILY) levelWithCurrent = 'red';
+  else if (percentWithCurrent >= HEAT_WARN_PERCENT || bigWithCurrent > MAX_BIG_DEALS) levelWithCurrent = 'yellow';
+
+  return { total, count, big, totalWithCurrent, bigWithCurrent, percent, percentWithCurrent, level, levelWithCurrent, label };
+}
+
+// ---- Рендеры ----
+function renderBankStats() {
+  const container = document.getElementById('bankStats');
+  if (!banks.length) {
+    container.innerHTML = '<div class="empty">Нет банков</div>';
+    return;
+  }
+
+  container.innerHTML = banks.map(bank => {
+    const heat = getBankHeat(bank.name);
+    const badgeClass = heat.level === 'red' ? 'badge-danger' : heat.level === 'yellow' ? 'badge-warn' : 'badge-ok';
+    const badge = heat.level === 'red' ? '🔴 Перегрет' : heat.level === 'yellow' ? '🟡 Риск' : '✅ Норма';
+    const left = Math.max(LIMIT_DAILY - heat.total, 0);
+    const lastTime = getLastDealTime(bank.name);
+    const timeSince = lastTime ? getTimeSince(lastTime) : 'нет сделок';
+    const timeClass = lastTime ? (Date.now() - lastTime > 3600000 ? 'warning' : 'ok') : '';
+    return `
+      <div class="bank-stat">
+        <div class="bank-stat-header">
+          <span class="bank-name">🏦 ${escapeHtml(bank.name)}</span>
+          <span class="bank-badge ${badgeClass}">${badge}</span>
+        </div>
+        <div class="bank-stat-sub">
+          Сегодня: ${formatRub(heat.total)} из ${formatRub(LIMIT_DAILY)} • ${heat.percent}%<br>
+          Осталось: ${formatRub(left)} • сделок: ${heat.count} • крупных: ${heat.big}<br>
+          <span class="deal-time-since ${timeClass}">⏱ Последняя сделка: ${timeSince}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderBanksList() {
+  const container = document.getElementById('banksList');
+  if (!banks.length) {
+    container.innerHTML = '<div class="empty">Добавь банки, которые используешь для продаж</div>';
+    return;
+  }
+  container.innerHTML = banks.map((bank, index) => {
+    const heat = getBankHeat(bank.name);
+    const badgeClass = heat.level === 'red' ? 'badge-danger' : heat.level === 'yellow' ? 'badge-warn' : 'badge-ok';
+    const badge = heat.level === 'red' ? '🔴 Перегрет' : heat.level === 'yellow' ? '🟡 Риск' : '✅ Норма';
+    const left = Math.max(LIMIT_DAILY - heat.total, 0);
+    const lastTime = getLastDealTime(bank.name);
+    const timeSince = lastTime ? getTimeSince(lastTime) : 'нет сделок';
+    const timeClass = lastTime ? (Date.now() - lastTime > 3600000 ? 'warning' : 'ok') : '';
+    return `
+      <div class="bank-card">
+        <div class="bank-card-header">
+          <div class="bank-name-wrapper">
+            <div class="bank-move-btns">
+              <button class="bank-move-btn" onclick="moveBank(${bank.id}, -1)" ${index === 0 ? 'disabled' : ''}>▲</button>
+              <button class="bank-move-btn" onclick="moveBank(${bank.id}, 1)" ${index === banks.length-1 ? 'disabled' : ''}>▼</button>
+            </div>
+            <span class="bank-name">🏦 ${escapeHtml(bank.name)}</span>
+          </div>
+          <span class="bank-badge ${badgeClass}">${badge}</span>
+          <button class="bank-delete" onclick="deleteBank(${bank.id})">🗑</button>
+        </div>
+        <div class="bank-card-sub">
+          Продано сегодня: ${formatRub(heat.total)} из ${formatRub(LIMIT_DAILY)}<br>
+          Перегрев: ${heat.percent}% • осталось: ${formatRub(left)}<br>
+          Сделок сегодня: ${heat.count} • крупных сделок: ${heat.big}<br>
+          <span class="deal-time-since ${timeClass}">⏱ Последняя сделка: ${timeSince}</span>
+          <div class="bank-balance-input">
+            <label>Остаток на банке (₽):</label>
+            <input type="number" id="balance-input-${bank.id}" value="${bank.balance || 0}" 
+                   onfocus="this.select()" 
+                   oninput="updateBankBalance(${bank.id}, this.value)" 
+                   onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                   enterkeyhint="done" inputmode="numeric"
+                   placeholder="0">
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderHistory() {
+  const container = document.getElementById('history');
+  if (!deals.length) {
+    container.innerHTML = '<div class="empty">Пока нет сделок</div>';
+    return;
+  }
+
+  const sorted = [...deals].sort((a, b) => {
+    const timeA = a.timestamp || 0;
+    const timeB = b.timestamp || 0;
+    return sortDesc ? timeB - timeA : timeA - timeB;
+  });
+
+  container.innerHTML = sorted.map(d => {
+    const isEditing = editingDealId === d.id;
+    const timeSince = d.timestamp ? getTimeSince(d.timestamp) : '';
+    const timeClass = d.timestamp ? (Date.now() - d.timestamp > 3600000 ? 'warning' : 'ok') : '';
+
+    let typeLabel, typeClass;
+    if (d.type === 'buy') { typeLabel = '📥 Покупка'; typeClass = 'buy'; }
+    else if (d.type === 'sell') { typeLabel = '📤 Продажа'; typeClass = 'sell'; }
+    else { typeLabel = '💰 Пополнение'; typeClass = 'deposit'; }
+
+    let details = `${d.usdt.toFixed(2)} USDT`;
+    if (d.type !== 'deposit') {
+      details += ` • ${formatRub(d.rub)} • курс ${d.rate.toFixed(2)}`;
+    } else {
+      details += ` • бонус`;
+    }
+
+    let actionsHtml;
+    if (isEditing) {
+      let dateObj = d.timestamp ? new Date(d.timestamp) : (() => {
+        const parts = d.date.split('.');
+        return new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+      })();
+      const dateStr = dateObj.toISOString().split('T')[0];
+      actionsHtml = `
+        <input type="date" id="deal-date-${d.id}" value="${dateStr}" class="deal-edit-date">
+        <button class="btn-save-edit" onclick="saveEditDate(${d.id})">💾</button>
+        <button class="btn-cancel-edit" onclick="cancelEditDate()">✖</button>
+      `;
+    } else {
+      actionsHtml = `
+        <button class="btn-edit" onclick="startEditDate(${d.id})">📅</button>
+        <button class="deal-delete" onclick="deleteDeal(${d.id})">🗑</button>
+      `;
+    }
+
+    return `
+      <div class="deal deal-${typeClass}">
+        <div class="deal-info">
+          <div>${typeLabel} ${details}</div>
+          <div class="deal-sub">${d.date} ${d.time || ''}</div>
+          ${d.bank ? `<div class="deal-bank">🏦 ${escapeHtml(d.bank)}</div>` : ''}
+          ${d.timestamp ? `<div class="deal-time-since ${timeClass}">⏱ ${timeSince}</div>` : ''}
+        </div>
+        <div class="deal-actions">${actionsHtml}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ---- Расчёт статистики с учётом остатков на банках ----
+function calculate() {
+  let buyQueue = deals.filter(d => d.type === 'buy').map(d => ({ usdt: d.usdt, rate: d.rate }));
+  let totalProfit = 0;
+  let totalBuyRub = 0, totalSellRub = 0;
+  let totalBuyUsdt = 0, totalSellUsdt = 0;
+  let totalDepositUsdt = 0;
+
+  deals.forEach(d => {
+    if (d.type === 'buy') {
+      totalBuyRub += d.rub;
+      totalBuyUsdt += d.usdt;
+    } else if (d.type === 'sell') {
+      totalSellRub += d.rub;
+      totalSellUsdt += d.usdt;
+    } else if (d.type === 'deposit') {
+      totalDepositUsdt += d.usdt;
+    }
+  });
+
+  deals.filter(d => d.type === 'sell').forEach(sell => {
+    let usdtToSell = sell.usdt;
+    const sellRate = sell.rate;
+    while (usdtToSell > 0 && buyQueue.length) {
+      const buy = buyQueue[0];
+      const used = Math.min(usdtToSell, buy.usdt);
+      totalProfit += used * (sellRate - buy.rate);
+      buy.usdt -= used;
+      usdtToSell -= used;
+      if (buy.usdt <= 0.0001) buyQueue.shift();
+    }
+  });
+
+  const totalBankBalance = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
+
+  const balanceUsdt = totalBuyUsdt + totalDepositUsdt - totalSellUsdt;
+  const balanceRub = totalSellRub - totalBuyRub + totalBankBalance;
+  const turnover = totalBuyRub + totalSellRub;
+
+  return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance };
+}
+
+// ---- Главный рендер ----
+function render() {
+  // обновляем статистику
+  updateStats();
+  renderBankOptions();
+
+  if (currentPage === 'trade') {
+    // ничего
+  } else if (currentPage === 'history') {
+    renderHistory();
+  } else if (currentPage === 'banks') {
+    renderBanksList();
+    renderBankStats();
+  }
+}
+
+function formatRub(n) {
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' ₽';
+}
+
+function escapeHtml(v) {
+  return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+}
+
+function saveData() {
+  tg.CloudStorage.setItem('deals', JSON.stringify(deals));
+  tg.CloudStorage.setItem('banks', JSON.stringify(banks));
+}
+
+function loadData() {
+  tg.CloudStorage.getItem('deals', (err, val) => {
+    if (val) try { deals = JSON.parse(val); } catch(e) { deals = []; }
+    tg.CloudStorage.getItem('banks', (err2, val2) => {
+      if (val2) try { banks = JSON.parse(val2); } catch(e) { banks = []; }
+      banks = normalizeBanks(banks);
+      saveData();
+      render();
+    });
+  });
+}
+
+function normalizeBanks(saved) {
+  const result = [];
+  saved.forEach(b => {
+    if (typeof b === 'string') addNormalizedBank(result, b);
+    else if (b && b.name) {
+      addNormalizedBank(result, b.name, b.id, b.balance);
+    }
+  });
+  deals.forEach(d => { if (d.bank) addNormalizedBank(result, d.bank); });
+  return result;
+}
+function addNormalizedBank(list, name, id, balance) {
+  const clean = String(name).trim();
+  if (!clean) return;
+  let existing = list.find(b => b.name.toLowerCase() === clean.toLowerCase());
+  if (existing) {
+    if (existing.balance === undefined && balance !== undefined) {
+      existing.balance = balance;
+    }
+    return;
+  }
+  list.push({ id: id || Date.now() + Math.random(), name: clean, balance: balance || 0 });
+}
+
+// Автообновление времени
+setInterval(() => {
+  if (currentPage === 'banks') {
+    renderBanksList();
+    renderBankStats();
+  } else if (currentPage === 'history') {
+    renderHistory();
+  }
+}, 60000);
+
+loadData();
+render();
+</script>
+</body>
+</html>

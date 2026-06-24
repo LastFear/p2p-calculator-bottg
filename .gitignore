@@ -1,0 +1,6 @@
+.env
+logs/
+tools/
+__pycache__/
+*.pyc
+index(11).html
