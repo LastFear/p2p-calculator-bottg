@@ -639,6 +639,42 @@
     font-size: 17px;
     font-weight: bold;
   }
+  .finance-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .finance-action-card {
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    padding: 10px;
+    background: linear-gradient(135deg, rgba(50, 245, 163, 0.13), rgba(142, 92, 255, 0.14)), var(--app-panel);
+    color: var(--app-text);
+    text-align: left;
+    cursor: pointer;
+  }
+  .finance-action-card.active {
+    border-color: rgba(50, 245, 163, 0.5);
+    box-shadow: 0 8px 18px rgba(50, 245, 163, 0.1);
+  }
+  .finance-action-title {
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 3px;
+  }
+  .finance-action-sub {
+    color: var(--app-muted);
+    font-size: 10px;
+    line-height: 1.25;
+  }
+  .finance-panel {
+    display: none;
+    margin-bottom: 14px;
+  }
+  .finance-panel.active {
+    display: block;
+  }
   .finance-expense-card {
     background: var(--app-panel);
     border: 1px solid var(--app-border);
@@ -672,29 +708,44 @@
   .activity-row {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
-    padding: 10px 0;
+    padding: 8px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   }
   .activity-row:last-child { border-bottom: none; }
+  .activity-main {
+    min-width: 0;
+    flex: 1;
+  }
   .activity-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
   }
   .activity-sub {
     margin-top: 2px;
     color: var(--app-muted);
-    font-size: 12px;
+    font-size: 10px;
+    line-height: 1.28;
+  }
+  .activity-last {
+    margin-top: 4px;
+    color: var(--app-text);
+    font-size: 10px;
+    line-height: 1.25;
+    opacity: 0.86;
+    white-space: normal;
   }
   .activity-badge {
     flex-shrink: 0;
     border-radius: 999px;
-    padding: 5px 8px;
+    padding: 4px 7px;
     color: var(--app-green);
     background: rgba(50, 245, 163, 0.14);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: bold;
+    max-width: 96px;
+    text-align: center;
   }
   .chart-modal {
     position: fixed;
@@ -1044,7 +1095,18 @@
     </div>
   </div>
 
-  <div class="form">
+  <div class="finance-actions">
+    <button class="finance-action-card" id="financeExpenseToggle" onclick="toggleFinancePanel('expense')">
+      <div class="finance-action-title">💳 Покупка картой</div>
+      <div class="finance-action-sub">Списать расход с выбранного банка</div>
+    </button>
+    <button class="finance-action-card" id="financeTransferToggle" onclick="toggleFinancePanel('transfer')">
+      <div class="finance-action-title">↔️ Перевод</div>
+      <div class="finance-action-sub">Переместить деньги между своими банками</div>
+    </button>
+  </div>
+
+  <div class="form finance-panel" id="financeExpensePanel">
     <div class="input-group">
       <label>🏦 Банк / карта</label>
       <select id="expenseBank"></select>
@@ -1082,8 +1144,7 @@
     <button class="btn-add" onclick="addCardExpense(); blurActiveElement();">Добавить покупку с карты</button>
   </div>
 
-  <div class="section-title">↔️ Перевод между банками</div>
-  <div class="form">
+  <div class="form finance-panel" id="financeTransferPanel">
     <div class="input-group">
       <label>Откуда</label>
       <select id="transferFromBank"></select>
@@ -1189,6 +1250,7 @@ let deals = [];
 let banks = [];
 let cardExpenses = [];
 let bankTransfers = [];
+let activeFinancePanel = '';
 let editingDealId = null;
 let sortDesc = true;
 let currentStatsPeriod = 'all';
@@ -1435,6 +1497,23 @@ function renderFinanceBankOptions() {
   }
 }
 
+function toggleFinancePanel(panel) {
+  activeFinancePanel = activeFinancePanel === panel ? '' : panel;
+  renderFinancePanels();
+  blurActiveElement();
+}
+
+function renderFinancePanels() {
+  const expensePanel = document.getElementById('financeExpensePanel');
+  const transferPanel = document.getElementById('financeTransferPanel');
+  const expenseToggle = document.getElementById('financeExpenseToggle');
+  const transferToggle = document.getElementById('financeTransferToggle');
+  if (expensePanel) expensePanel.classList.toggle('active', activeFinancePanel === 'expense');
+  if (transferPanel) transferPanel.classList.toggle('active', activeFinancePanel === 'transfer');
+  if (expenseToggle) expenseToggle.classList.toggle('active', activeFinancePanel === 'expense');
+  if (transferToggle) transferToggle.classList.toggle('active', activeFinancePanel === 'transfer');
+}
+
 function getWeekStartTimestamp() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -1481,6 +1560,7 @@ function addCardExpense() {
 
   document.getElementById('expenseAmount').value = '';
   document.getElementById('expenseNote').value = '';
+  activeFinancePanel = '';
   saveData();
   renderFinance();
   renderBanksList();
@@ -1533,6 +1613,7 @@ function addBankTransfer() {
 
   document.getElementById('transferAmount').value = '';
   document.getElementById('transferNote').value = '';
+  activeFinancePanel = '';
   saveData();
   renderFinance();
   renderBanksList();
@@ -1560,6 +1641,21 @@ function getLastCardExpense(bankName) {
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] || null;
 }
 
+function getRecentCardExpenses(bankName, limit = 3) {
+  return cardExpenses
+    .filter(e => e.bank && e.bank.toLowerCase() === bankName.toLowerCase())
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    .slice(0, limit);
+}
+
+function getCompactDate(timestamp, fallbackDate = '') {
+  const date = timestamp ? new Date(timestamp) : null;
+  if (date && !Number.isNaN(date.getTime())) {
+    return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}`;
+  }
+  return String(fallbackDate).slice(0, 5);
+}
+
 function getInactiveText(timestamp) {
   if (!timestamp) return 'покупок не было';
   const diff = Date.now() - timestamp;
@@ -1576,12 +1672,18 @@ function renderFinanceActivity() {
     return;
   }
   container.innerHTML = banks.map(bank => {
-    const last = getLastCardExpense(bank.name);
+    const recent = getRecentCardExpenses(bank.name, 3);
+    const last = recent[0] || null;
+    const recentText = recent.length
+      ? recent.map(item => `${getCompactDate(item.timestamp, item.date)} - ${formatRub(item.amount)}`).join(' · ')
+      : 'Покупок по карте пока нет';
+    const lastText = last ? `${last.date} ${last.time || ''} • ${escapeHtml(last.category)}` : 'Нет последней покупки';
     return `
       <div class="activity-row">
-        <div>
+        <div class="activity-main">
           <div class="activity-name">🏦 ${escapeHtml(bank.name)}</div>
-          <div class="activity-sub">${last ? `${last.date} ${last.time} • ${escapeHtml(last.category)}` : 'Нет покупок по карте'}</div>
+          <div class="activity-sub">${lastText}</div>
+          <div class="activity-last">${escapeHtml(recentText)}</div>
         </div>
         <div class="activity-badge">${getInactiveText(last?.timestamp)}</div>
       </div>
@@ -1635,6 +1737,7 @@ function renderFinanceExpenses() {
 
 function renderFinance() {
   renderFinanceBankOptions();
+  renderFinancePanels();
   const weekStart = getWeekStartTimestamp();
   const weekExpenses = cardExpenses.filter(e => (e.timestamp || 0) >= weekStart);
   const weekTransfers = bankTransfers.filter(t => (t.timestamp || 0) >= weekStart);
