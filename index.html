@@ -698,7 +698,7 @@
   <div id="banksList"></div>
 
   <div id="bankStatsSection">
-    <div class="section-title">📊 Траты за период</div>
+    <div class="section-title">📊 Сделки за выбранный период</div>
     <div id="bankStats"></div>
   </div>
 
@@ -1270,7 +1270,7 @@ function renderBankStats() {
   }).filter(row => row.total > 0);
 
   if (!rows.length) {
-    container.innerHTML = `<div class="empty">За период «${periodInfo.label}» трат по банкам нет</div>`;
+    container.innerHTML = `<div class="empty">За период «${periodInfo.label}» сделок по банкам нет</div>`;
     return;
   }
 
