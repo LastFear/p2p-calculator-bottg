@@ -22,16 +22,31 @@
     --app-gradient-soft: linear-gradient(135deg, rgba(50, 245, 163, 0.22), rgba(142, 92, 255, 0.24));
   }
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body {
     background:
       radial-gradient(circle at top left, rgba(50, 245, 163, 0.12), transparent 32%),
       radial-gradient(circle at top right, rgba(142, 92, 255, 0.16), transparent 34%),
       var(--app-bg);
     color: var(--app-text);
+    position: fixed;
+    inset: 0;
+    width: 100%;
     padding: 16px;
     padding-bottom: 82px;
     user-select: none;
     color-scheme: dark;
+  }
+  #app {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
   
   /* Убираем стрелочки у всех числовых полей */
@@ -826,6 +841,7 @@
 </style>
 </head>
 <body>
+<div id="app">
 
 <!-- Верхние карточки статистики -->
 <div class="stats-filter">
@@ -1070,6 +1086,8 @@
   <button id="bottomHistory" onclick="switchPage('history')">📜 История</button>
   <button id="bottomBanks" onclick="switchPage('banks')">🏦 Банки</button>
   <button id="bottomFinance" onclick="switchPage('finance')">💳 Финансы</button>
+</div>
+
 </div>
 
 <script>
