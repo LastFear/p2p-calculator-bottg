@@ -59,6 +59,14 @@
     border-radius: 12px;
     text-align: center;
   }
+  .stat-card.clickable {
+    cursor: pointer;
+    transition: transform 0.16s, border-color 0.16s;
+  }
+  .stat-card.clickable:active {
+    transform: scale(0.98);
+    border-color: rgba(50, 245, 163, 0.38);
+  }
   .stat-card:nth-child(2n) {
     background: linear-gradient(135deg, rgba(142, 92, 255, 0.27), rgba(50, 245, 163, 0.18)), var(--app-panel);
   }
@@ -586,6 +594,142 @@
     font-size: 12px;
     line-height: 1.35;
   }
+  .chart-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(10px);
+    z-index: 30;
+  }
+  .chart-modal.show { display: flex; }
+  .chart-panel {
+    width: 100%;
+    max-height: 82vh;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(50, 245, 163, 0.1), rgba(142, 92, 255, 0.13)), #0d1119;
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.58);
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border-bottom: 1px solid var(--app-border);
+  }
+  .chart-title {
+    font-size: 16px;
+    font-weight: bold;
+  }
+  .chart-subtitle {
+    margin-top: 2px;
+    color: var(--app-muted);
+    font-size: 12px;
+  }
+  .chart-close {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--app-text);
+    font-size: 20px;
+    cursor: pointer;
+  }
+  .chart-body {
+    padding: 12px 14px 14px;
+    overflow-y: auto;
+    max-height: calc(82vh - 64px);
+  }
+  .chart-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .chart-summary-card {
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--app-border);
+  }
+  .chart-summary-label {
+    color: var(--app-muted);
+    font-size: 11px;
+    margin-bottom: 3px;
+  }
+  .chart-summary-value {
+    font-size: 15px;
+    font-weight: bold;
+  }
+  .chart-legend {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: var(--app-muted);
+    font-size: 12px;
+  }
+  .chart-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    margin-right: 5px;
+  }
+  .chart-dot.buy { background: var(--app-green); }
+  .chart-dot.sell { background: var(--app-purple); }
+  .chart-row {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .chart-row-label {
+    color: var(--app-muted);
+    font-size: 11px;
+    text-align: right;
+  }
+  .chart-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .chart-bar-line {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .chart-bar-track {
+    height: 13px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .chart-bar-fill {
+    height: 100%;
+    min-width: 2px;
+    border-radius: 999px;
+  }
+  .chart-bar-fill.buy {
+    background: linear-gradient(90deg, rgba(50, 245, 163, 0.35), var(--app-green));
+  }
+  .chart-bar-fill.sell {
+    background: linear-gradient(90deg, rgba(142, 92, 255, 0.3), var(--app-purple));
+  }
+  .chart-bar-value {
+    min-width: 58px;
+    color: var(--app-muted);
+    font-size: 11px;
+    text-align: right;
+  }
   
   .editing {
     background: var(--app-gradient);
@@ -608,7 +752,7 @@
     <div class="stat-label">💰 Прибыль</div>
     <div class="stat-value" id="profit">0 ₽</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card clickable" onclick="openTurnoverChart()">
     <div class="stat-label">📊 Оборот</div>
     <div class="stat-value" id="turnover">0 ₽</div>
   </div>
@@ -619,6 +763,35 @@
   <div class="stat-card">
     <div class="stat-label">💵 Баланс ₽</div>
     <div class="stat-value" id="balanceRub">0 ₽</div>
+  </div>
+</div>
+
+<div class="chart-modal" id="turnoverModal" onclick="closeTurnoverChart(event)">
+  <div class="chart-panel" onclick="event.stopPropagation()">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">📊 Оборот покупок и продаж</div>
+        <div class="chart-subtitle" id="turnoverChartSubtitle">Период: всё время</div>
+      </div>
+      <button class="chart-close" onclick="closeTurnoverChart()">×</button>
+    </div>
+    <div class="chart-body">
+      <div class="chart-summary">
+        <div class="chart-summary-card">
+          <div class="chart-summary-label">Покупки</div>
+          <div class="chart-summary-value" id="chartBuyTotal">0 ₽</div>
+        </div>
+        <div class="chart-summary-card">
+          <div class="chart-summary-label">Продажи</div>
+          <div class="chart-summary-value" id="chartSellTotal">0 ₽</div>
+        </div>
+      </div>
+      <div class="chart-legend">
+        <span><i class="chart-dot buy"></i>Покупка</span>
+        <span><i class="chart-dot sell"></i>Продажа</span>
+      </div>
+      <div id="turnoverChart"></div>
+    </div>
   </div>
 </div>
 
@@ -861,6 +1034,7 @@ function setStatsPeriod(period) {
   });
   updateStats();
   if (currentPage === 'banks') renderBankStats();
+  if (document.getElementById('turnoverModal')?.classList.contains('show')) renderTurnoverChart();
 }
 
 function setHistoryTypeFilter(type) {
@@ -1497,6 +1671,137 @@ function calculate(period = 'all') {
   return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance, label: periodInfo.label };
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function getMonthLabel(date, withYear = false) {
+  const months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  return withYear ? `${months[date.getMonth()]} ${String(date.getFullYear()).slice(2)}` : months[date.getMonth()];
+}
+
+function getTurnoverBucketKey(date, period) {
+  const y = date.getFullYear();
+  const m = pad2(date.getMonth() + 1);
+  const d = pad2(date.getDate());
+  if (period === 'today') return `${y}-${m}-${d}-${pad2(date.getHours())}`;
+  if (period === 'week' || period === 'month') return `${y}-${m}-${d}`;
+  return `${y}-${m}`;
+}
+
+function getTurnoverBuckets(period) {
+  const buckets = [];
+  const periodInfo = getStatsPeriodRange(period);
+  const addBucket = (key, label) => buckets.push({ key, label, buy: 0, sell: 0 });
+  const now = new Date();
+
+  if (period === 'today') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    for (let h = 0; h < 24; h++) {
+      const date = new Date(start);
+      date.setHours(h);
+      addBucket(getTurnoverBucketKey(date, period), `${pad2(h)}:00`);
+    }
+  } else if (period === 'week') {
+    const start = new Date(periodInfo.start);
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      addBucket(getTurnoverBucketKey(date, period), `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}`);
+    }
+  } else if (period === 'month') {
+    const start = new Date(periodInfo.start);
+    const days = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    for (let i = 1; i <= days; i++) {
+      const date = new Date(start.getFullYear(), start.getMonth(), i);
+      addBucket(getTurnoverBucketKey(date, period), `${pad2(i)}.${pad2(date.getMonth() + 1)}`);
+    }
+  } else if (period === 'year') {
+    const year = now.getFullYear();
+    for (let m = 0; m < 12; m++) {
+      const date = new Date(year, m, 1);
+      addBucket(getTurnoverBucketKey(date, period), getMonthLabel(date));
+    }
+  } else {
+    const tradeDates = deals
+      .filter(d => d.type === 'buy' || d.type === 'sell')
+      .map(d => getDealTimestamp(d))
+      .filter(Boolean)
+      .map(ts => new Date(ts));
+    if (!tradeDates.length) return [];
+
+    const minDate = new Date(Math.min(...tradeDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...tradeDates.map(d => d.getTime())));
+    const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+    while (cursor <= end) {
+      addBucket(getTurnoverBucketKey(cursor, period), getMonthLabel(cursor, true));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  }
+
+  const bucketMap = new Map(buckets.map(bucket => [bucket.key, bucket]));
+  deals.forEach(deal => {
+    if (deal.type !== 'buy' && deal.type !== 'sell') return;
+    if (!isDealInPeriod(deal, periodInfo.start)) return;
+    const date = new Date(getDealTimestamp(deal));
+    const bucket = bucketMap.get(getTurnoverBucketKey(date, period));
+    if (!bucket) return;
+    bucket[deal.type] += deal.rub || 0;
+  });
+
+  return buckets;
+}
+
+function renderTurnoverChart() {
+  const periodInfo = getStatsPeriodRange(currentStatsPeriod);
+  const buckets = getTurnoverBuckets(currentStatsPeriod);
+  const chart = document.getElementById('turnoverChart');
+  const buyTotal = buckets.reduce((sum, bucket) => sum + bucket.buy, 0);
+  const sellTotal = buckets.reduce((sum, bucket) => sum + bucket.sell, 0);
+  const maxValue = Math.max(...buckets.flatMap(bucket => [bucket.buy, bucket.sell]), 0);
+
+  document.getElementById('turnoverChartSubtitle').textContent = `Период: ${periodInfo.label}`;
+  document.getElementById('chartBuyTotal').textContent = formatRub(buyTotal);
+  document.getElementById('chartSellTotal').textContent = formatRub(sellTotal);
+
+  if (!buckets.length || maxValue <= 0) {
+    chart.innerHTML = '<div class="empty">Нет покупок и продаж за выбранный период</div>';
+    return;
+  }
+
+  chart.innerHTML = buckets.map(bucket => {
+    const buyWidth = Math.max((bucket.buy / maxValue) * 100, bucket.buy > 0 ? 2 : 0);
+    const sellWidth = Math.max((bucket.sell / maxValue) * 100, bucket.sell > 0 ? 2 : 0);
+    return `
+      <div class="chart-row">
+        <div class="chart-row-label">${escapeHtml(bucket.label)}</div>
+        <div class="chart-bars">
+          <div class="chart-bar-line">
+            <div class="chart-bar-track"><div class="chart-bar-fill buy" style="width:${buyWidth}%"></div></div>
+            <div class="chart-bar-value">${formatCompactRub(bucket.buy)}</div>
+          </div>
+          <div class="chart-bar-line">
+            <div class="chart-bar-track"><div class="chart-bar-fill sell" style="width:${sellWidth}%"></div></div>
+            <div class="chart-bar-value">${formatCompactRub(bucket.sell)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openTurnoverChart() {
+  renderTurnoverChart();
+  document.getElementById('turnoverModal').classList.add('show');
+}
+
+function closeTurnoverChart(event) {
+  if (event && event.target && event.target.id !== 'turnoverModal') return;
+  document.getElementById('turnoverModal').classList.remove('show');
+}
+
 // ---- Главный рендер ----
 function render() {
   // обновляем статистику
@@ -1515,6 +1820,12 @@ function render() {
 
 function formatRub(n) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' ₽';
+}
+
+function formatCompactRub(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1).replace('.', ',') + ' млн';
+  if (n >= 1000) return Math.round(n / 1000) + 'к';
+  return Math.round(n).toString();
 }
 
 function escapeHtml(v) {
