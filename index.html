@@ -962,8 +962,8 @@
              enterkeyhint="done" inputmode="numeric">
     </div>
 
-    <div class="input-group" id="bankGroup" style="display:none;">
-      <label>🏦 Банк для продажи</label>
+    <div class="input-group" id="bankGroup">
+      <label id="labelBank">🏦 Банк оплаты</label>
       <select id="inputBank" onchange="checkBank()"></select>
     </div>
 
@@ -1082,10 +1082,36 @@
     <button class="btn-add" onclick="addCardExpense(); blurActiveElement();">Добавить покупку с карты</button>
   </div>
 
+  <div class="section-title">↔️ Перевод между банками</div>
+  <div class="form">
+    <div class="input-group">
+      <label>Откуда</label>
+      <select id="transferFromBank"></select>
+    </div>
+    <div class="input-group">
+      <label>Куда</label>
+      <select id="transferToBank"></select>
+    </div>
+    <div class="input-group">
+      <label>Сумма перевода ₽</label>
+      <input type="number" id="transferAmount" placeholder="0"
+             onfocus="this.select()"
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); addBankTransfer();}"
+             enterkeyhint="done" inputmode="numeric">
+    </div>
+    <div class="input-group">
+      <label>Комментарий</label>
+      <input type="text" id="transferNote" placeholder="Например: возврат на Т-Банк для закупа"
+             onkeydown="if(event.key==='Enter'){event.preventDefault(); addBankTransfer();}"
+             enterkeyhint="done">
+    </div>
+    <button class="btn-add" onclick="addBankTransfer(); blurActiveElement();">Добавить перевод</button>
+  </div>
+
   <div class="section-title">📊 Активность карт</div>
   <div class="bank-card" id="financeActivity"></div>
 
-  <div class="section-title">🧾 Последние траты</div>
+  <div class="section-title">🧾 Последние операции</div>
   <div id="financeExpenses"></div>
 </div>
 
@@ -1162,6 +1188,7 @@ let currentPage = 'trade';
 let deals = [];
 let banks = [];
 let cardExpenses = [];
+let bankTransfers = [];
 let editingDealId = null;
 let sortDesc = true;
 let currentStatsPeriod = 'all';
@@ -1195,6 +1222,7 @@ function setMode(mode) {
   const bankGroup = document.getElementById('bankGroup');
   const rubLabel = document.getElementById('labelRub');
   const usdtLabel = document.getElementById('labelUsdt');
+  const bankLabel = document.getElementById('labelBank');
   const warningEl = document.getElementById('bankWarning');
   const ratePreview = document.getElementById('ratePreview');
 
@@ -1207,15 +1235,18 @@ function setMode(mode) {
     usdtLabel.textContent = 'Количество USDT (бонус)';
   } else if (mode === 'buy') {
     rubGroup.style.display = 'block';
-    bankGroup.style.display = 'none';
+    bankGroup.style.display = 'block';
     rubLabel.textContent = 'Потратил рублей';
     usdtLabel.textContent = 'Получил USDT';
+    bankLabel.textContent = '🏦 Банк оплаты';
+    renderBankOptions();
     updateRate();
   } else { // sell
     rubGroup.style.display = 'block';
     bankGroup.style.display = 'block';
     rubLabel.textContent = 'Получил рублей';
     usdtLabel.textContent = 'Отдал USDT';
+    bankLabel.textContent = '🏦 Банк поступления';
     renderBankOptions();
     updateRate();
     checkBank();
@@ -1341,6 +1372,13 @@ function deleteBank(id) {
     tg.showAlert('Этот банк уже есть в истории финансов, его нельзя удалить.');
     return;
   }
+  if (bankTransfers.some(t =>
+    (t.fromBank && t.fromBank.toLowerCase() === bank.name.toLowerCase()) ||
+    (t.toBank && t.toBank.toLowerCase() === bank.name.toLowerCase())
+  )) {
+    tg.showAlert('Этот банк уже есть в переводах, его нельзя удалить.');
+    return;
+  }
   tg.showConfirm('Удалить банк?', (ok) => {
     if (ok) {
       banks = banks.filter(b => b.id !== id);
@@ -1371,15 +1409,30 @@ function updateBankBalance(id, value) {
 // ---- Финансы ----
 function renderFinanceBankOptions() {
   const select = document.getElementById('expenseBank');
+  const transferFrom = document.getElementById('transferFromBank');
+  const transferTo = document.getElementById('transferToBank');
   if (!select) return;
   if (!banks.length) {
     select.innerHTML = '<option value="">Сначала добавь банк во вкладке Банки</option>';
+    if (transferFrom) transferFrom.innerHTML = select.innerHTML;
+    if (transferTo) transferTo.innerHTML = select.innerHTML;
     return;
   }
   const current = select.value;
+  const currentFrom = transferFrom?.value || '';
+  const currentTo = transferTo?.value || '';
+  const options = banks.map(bank => `<option value="${escapeHtml(bank.name)}">${escapeHtml(bank.name)} — остаток ${formatRub(bank.balance || 0)}</option>`).join('');
   select.innerHTML = '<option value="">Выбери банк</option>' +
-    banks.map(bank => `<option value="${escapeHtml(bank.name)}">${escapeHtml(bank.name)} — остаток ${formatRub(bank.balance || 0)}</option>`).join('');
+    options;
   if (banks.some(bank => bank.name === current)) select.value = current;
+  if (transferFrom) {
+    transferFrom.innerHTML = '<option value="">Откуда списать</option>' + options;
+    if (banks.some(bank => bank.name === currentFrom)) transferFrom.value = currentFrom;
+  }
+  if (transferTo) {
+    transferTo.innerHTML = '<option value="">Куда зачислить</option>' + options;
+    if (banks.some(bank => bank.name === currentTo)) transferTo.value = currentTo;
+  }
 }
 
 function getWeekStartTimestamp() {
@@ -1388,6 +1441,17 @@ function getWeekStartTimestamp() {
   const day = start.getDay() || 7;
   start.setDate(start.getDate() - day + 1);
   return start.getTime();
+}
+
+function findBankByName(name) {
+  return banks.find(b => b.name && b.name.toLowerCase() === String(name || '').toLowerCase());
+}
+
+function adjustBankBalance(bankName, amount) {
+  const bank = findBankByName(bankName);
+  if (!bank) return false;
+  bank.balance = (bank.balance || 0) + amount;
+  return true;
 }
 
 function addCardExpense() {
@@ -1399,7 +1463,7 @@ function addCardExpense() {
   if (!bankName) { tg.showAlert('Выбери банк / карту.'); return; }
   if (amount <= 0) { tg.showAlert('Сумма покупки должна быть больше нуля.'); return; }
 
-  const bank = banks.find(b => b.name.toLowerCase() === bankName.toLowerCase());
+  const bank = findBankByName(bankName);
   if (!bank) { tg.showAlert('Банк не найден. Обнови список банков.'); return; }
 
   const now = new Date();
@@ -1428,9 +1492,61 @@ function deleteCardExpense(id) {
   if (!expense) return;
   tg.showConfirm('Удалить покупку и вернуть сумму на банк?', (ok) => {
     if (!ok) return;
-    const bank = banks.find(b => b.name.toLowerCase() === expense.bank.toLowerCase());
+    const bank = findBankByName(expense.bank);
     if (bank) bank.balance = (bank.balance || 0) + (expense.amount || 0);
     cardExpenses = cardExpenses.filter(e => e.id !== id);
+    saveData();
+    renderFinance();
+    renderBanksList();
+    updateStats();
+  });
+}
+
+function addBankTransfer() {
+  const fromBankName = document.getElementById('transferFromBank').value;
+  const toBankName = document.getElementById('transferToBank').value;
+  const amount = parseFloat(document.getElementById('transferAmount').value) || 0;
+  const note = document.getElementById('transferNote').value.trim();
+
+  if (!fromBankName) { tg.showAlert('Выбери банк, откуда списать.'); return; }
+  if (!toBankName) { tg.showAlert('Выбери банк, куда зачислить.'); return; }
+  if (fromBankName.toLowerCase() === toBankName.toLowerCase()) { tg.showAlert('Банки должны быть разными.'); return; }
+  if (amount <= 0) { tg.showAlert('Сумма перевода должна быть больше нуля.'); return; }
+
+  const fromBank = findBankByName(fromBankName);
+  const toBank = findBankByName(toBankName);
+  if (!fromBank || !toBank) { tg.showAlert('Один из банков не найден. Обнови список банков.'); return; }
+
+  const now = new Date();
+  fromBank.balance = (fromBank.balance || 0) - amount;
+  toBank.balance = (toBank.balance || 0) + amount;
+  bankTransfers.push({
+    id: Date.now(),
+    fromBank: fromBank.name,
+    toBank: toBank.name,
+    amount,
+    note,
+    date: now.toLocaleDateString('ru-RU'),
+    time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+    timestamp: now.getTime()
+  });
+
+  document.getElementById('transferAmount').value = '';
+  document.getElementById('transferNote').value = '';
+  saveData();
+  renderFinance();
+  renderBanksList();
+  updateStats();
+}
+
+function deleteBankTransfer(id) {
+  const transfer = bankTransfers.find(t => t.id === id);
+  if (!transfer) return;
+  tg.showConfirm('Удалить перевод и вернуть остатки банков обратно?', (ok) => {
+    if (!ok) return;
+    adjustBankBalance(transfer.fromBank, transfer.amount || 0);
+    adjustBankBalance(transfer.toBank, -(transfer.amount || 0));
+    bankTransfers = bankTransfers.filter(t => t.id !== id);
     saveData();
     renderFinance();
     renderBanksList();
@@ -1476,32 +1592,54 @@ function renderFinanceActivity() {
 function renderFinanceExpenses() {
   const container = document.getElementById('financeExpenses');
   if (!container) return;
-  if (!cardExpenses.length) {
-    container.innerHTML = '<div class="empty">Покупок с карт пока нет</div>';
+  const operations = [
+    ...cardExpenses.map(expense => ({ ...expense, financeType: 'expense' })),
+    ...bankTransfers.map(transfer => ({ ...transfer, financeType: 'transfer' }))
+  ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+  if (!operations.length) {
+    container.innerHTML = '<div class="empty">Финансовых операций пока нет</div>';
     return;
   }
-  const sorted = [...cardExpenses].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  container.innerHTML = sorted.slice(0, 50).map(expense => `
+  container.innerHTML = operations.slice(0, 50).map(item => {
+    if (item.financeType === 'transfer') {
+      return `
     <div class="finance-expense-card">
       <div class="finance-expense-info">
-        <div>💳 ${escapeHtml(expense.category)} • ${formatRub(expense.amount)}</div>
+        <div>↔️ Перевод • ${formatRub(item.amount)}</div>
         <div class="finance-expense-sub">
-          🏦 ${escapeHtml(expense.bank)}<br>
-          ${expense.date} ${expense.time || ''}
-          ${expense.note ? `<br>${escapeHtml(expense.note)}` : ''}
+          ${escapeHtml(item.fromBank)} → ${escapeHtml(item.toBank)}<br>
+          ${item.date} ${item.time || ''}
+          ${item.note ? `<br>${escapeHtml(item.note)}` : ''}
         </div>
       </div>
-      <button class="finance-delete" onclick="deleteCardExpense(${expense.id})">🗑</button>
+      <button class="finance-delete" onclick="deleteBankTransfer(${item.id})">🗑</button>
     </div>
-  `).join('');
+      `;
+    }
+    return `
+    <div class="finance-expense-card">
+      <div class="finance-expense-info">
+        <div>💳 ${escapeHtml(item.category)} • ${formatRub(item.amount)}</div>
+        <div class="finance-expense-sub">
+          🏦 ${escapeHtml(item.bank)}<br>
+          ${item.date} ${item.time || ''}
+          ${item.note ? `<br>${escapeHtml(item.note)}` : ''}
+        </div>
+      </div>
+      <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
+    </div>
+    `;
+  }).join('');
 }
 
 function renderFinance() {
   renderFinanceBankOptions();
   const weekStart = getWeekStartTimestamp();
   const weekExpenses = cardExpenses.filter(e => (e.timestamp || 0) >= weekStart);
+  const weekTransfers = bankTransfers.filter(t => (t.timestamp || 0) >= weekStart);
   const weekTotal = weekExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  document.getElementById('financeWeekCount').textContent = String(weekExpenses.length);
+  document.getElementById('financeWeekCount').textContent = String(weekExpenses.length + weekTransfers.length);
   document.getElementById('financeWeekTotal').textContent = formatRub(weekTotal);
   renderFinanceActivity();
   renderFinanceExpenses();
@@ -1521,20 +1659,27 @@ function updateStats() {
 function renderBankOptions() {
   const select = document.getElementById('inputBank');
   if (!banks.length) {
-    select.innerHTML = '<option value="">Сначала добавь банк внизу: Банки</option>';
+    select.innerHTML = '<option value="">Сначала добавь банк во вкладке Банки</option>';
     return;
   }
+  const current = select.value;
   select.innerHTML = '<option value="">Выбери банк</option>' +
     banks.map(b => {
       const heat = getBankHeat(b.name);
-      return `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)} — ${heat.label}</option>`;
+      const info = currentMode === 'sell' ? heat.label : `остаток ${formatRub(b.balance || 0)}`;
+      return `<option value="${escapeHtml(b.name)}">${escapeHtml(b.name)} — ${info}</option>`;
     }).join('');
+  if (banks.some(bank => bank.name === current)) select.value = current;
 }
 
 function getAllBankNames() {
   const names = [];
   banks.forEach(b => { if (b.name) names.push(b.name); });
   deals.forEach(d => { if (d.bank) names.push(d.bank); });
+  bankTransfers.forEach(t => {
+    if (t.fromBank) names.push(t.fromBank);
+    if (t.toBank) names.push(t.toBank);
+  });
   return [...new Set(names.map(name => String(name).trim()).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'ru'));
 }
@@ -1578,6 +1723,27 @@ function checkBank() {
   }
 }
 
+function applyDealBankEffect(deal) {
+  if (!deal || !deal.bank || deal.bankBalanceApplied || deal.type === 'deposit') return;
+  if (deal.type === 'buy') {
+    adjustBankBalance(deal.bank, -(deal.rub || 0));
+    deal.bankBalanceApplied = true;
+  } else if (deal.type === 'sell') {
+    adjustBankBalance(deal.bank, deal.rub || 0);
+    deal.bankBalanceApplied = true;
+  }
+}
+
+function reverseDealBankEffect(deal) {
+  if (!deal || !deal.bank || !deal.bankBalanceApplied || deal.type === 'deposit') return;
+  if (deal.type === 'buy') {
+    adjustBankBalance(deal.bank, deal.rub || 0);
+  } else if (deal.type === 'sell') {
+    adjustBankBalance(deal.bank, -(deal.rub || 0));
+  }
+  deal.bankBalanceApplied = false;
+}
+
 // ---- Добавление сделки ----
 function addDeal() {
   const usdt = parseFloat(document.getElementById('inputUsdt').value) || 0;
@@ -1596,9 +1762,10 @@ function addDeal() {
       tg.showAlert('Укажите сумму рублей больше нуля!');
       return;
     }
-    if (currentMode === 'sell') {
+    if (currentMode === 'buy' || currentMode === 'sell') {
       if (!banks.length) { tg.showAlert('Сначала добавьте банк во вкладке "Банки"!'); return; }
-      if (!bank) { tg.showAlert('Выберите банк для продажи!'); return; }
+      if (!bank) { tg.showAlert(currentMode === 'buy' ? 'Выберите банк оплаты!' : 'Выберите банк для продажи!'); return; }
+      if (!findBankByName(bank)) { tg.showAlert('Банк не найден. Обнови список банков.'); return; }
     }
   }
 
@@ -1613,7 +1780,8 @@ function addDeal() {
     time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     timestamp: now.getTime()
   };
-  if (currentMode === 'sell') deal.bank = bank;
+  if (currentMode === 'buy' || currentMode === 'sell') deal.bank = bank;
+  applyDealBankEffect(deal);
 
   deals.push(deal);
   resetTradeForm();
@@ -1627,6 +1795,8 @@ function addDeal() {
 function deleteDeal(id) {
   tg.showConfirm('Удалить сделку?', (ok) => {
     if (ok) {
+      const deal = deals.find(d => d.id === id);
+      reverseDealBankEffect(deal);
       deals = deals.filter(d => d.id !== id);
       saveData();
       render();
@@ -1669,7 +1839,7 @@ function updateEditDealFields(id) {
   const rubWrap = document.getElementById(`edit-rub-wrap-${id}`);
   const bankWrap = document.getElementById(`edit-bank-wrap-${id}`);
   if (rubWrap) rubWrap.style.display = type === 'deposit' ? 'none' : 'block';
-  if (bankWrap) bankWrap.style.display = type === 'sell' ? 'block' : 'none';
+  if (bankWrap) bankWrap.style.display = type === 'deposit' ? 'none' : 'block';
 }
 
 function saveEditDeal(id) {
@@ -1685,12 +1855,13 @@ function saveEditDeal(id) {
   if (!dateValue) { tg.showAlert('Выберите дату!'); return; }
   if (usdt <= 0) { tg.showAlert('USDT должен быть больше нуля!'); return; }
   if (type !== 'deposit' && rub <= 0) { tg.showAlert('Сумма рублей должна быть больше нуля!'); return; }
-  if (type === 'sell' && !bank) { tg.showAlert('Выберите банк для продажи!'); return; }
+  if (type !== 'deposit' && !bank) { tg.showAlert(type === 'buy' ? 'Выберите банк оплаты!' : 'Выберите банк для продажи!'); return; }
 
   const [year, month, day] = dateValue.split('-').map(Number);
   const [hour, minute] = timeValue.split(':').map(Number);
   const dateObj = new Date(year, month - 1, day, hour || 0, minute || 0, 0, 0);
 
+  reverseDealBankEffect(deal);
   deal.type = type;
   deal.rub = rub;
   deal.usdt = usdt;
@@ -1698,8 +1869,10 @@ function saveEditDeal(id) {
   deal.date = dateObj.toLocaleDateString('ru-RU');
   deal.time = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   deal.timestamp = dateObj.getTime();
-  if (type === 'sell') deal.bank = bank;
+  if (type !== 'deposit') deal.bank = bank;
   else delete deal.bank;
+  deal.bankBalanceApplied = false;
+  applyDealBankEffect(deal);
 
   if (bank) addNormalizedBank(banks, bank);
   banks = normalizeBanks(banks);
@@ -1735,7 +1908,7 @@ function buildDealEditForm(d) {
         <label>Рубли</label>
         <input type="number" id="edit-rub-${d.id}" value="${d.rub || 0}" inputmode="numeric">
       </div>
-      <div id="edit-bank-wrap-${d.id}" style="${d.type === 'sell' ? '' : 'display:none;'}">
+      <div id="edit-bank-wrap-${d.id}" style="${d.type === 'deposit' ? 'display:none;' : ''}">
         <label>Банк</label>
         <select id="edit-bank-${d.id}">
           <option value="">Выбери банк</option>
@@ -2011,6 +2184,7 @@ function calculate(period = 'all') {
   let currentBuyRub = 0, currentSellRub = 0;
   let currentBuyUsdt = 0, currentSellUsdt = 0;
   let currentDepositUsdt = 0;
+  let unappliedBuyRub = 0, unappliedSellRub = 0;
 
   sortedDeals.forEach(d => {
     const inPeriod = isDealInPeriod(d, periodStart);
@@ -2019,12 +2193,14 @@ function calculate(period = 'all') {
       buyQueue.push({ usdt: d.usdt, rate: d.rate });
       currentBuyRub += d.rub;
       currentBuyUsdt += d.usdt;
+      if (!d.bankBalanceApplied) unappliedBuyRub += d.rub;
       if (inPeriod) {
         periodBuyRub += d.rub;
       }
     } else if (d.type === 'sell') {
       currentSellRub += d.rub;
       currentSellUsdt += d.usdt;
+      if (!d.bankBalanceApplied) unappliedSellRub += d.rub;
       if (inPeriod) {
         periodSellRub += d.rub;
       }
@@ -2047,7 +2223,7 @@ function calculate(period = 'all') {
   const totalBankBalance = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
 
   const balanceUsdt = currentBuyUsdt + currentDepositUsdt - currentSellUsdt;
-  const balanceRub = currentSellRub - currentBuyRub + totalBankBalance;
+  const balanceRub = unappliedSellRub - unappliedBuyRub + totalBankBalance;
   const turnover = periodBuyRub + periodSellRub;
 
   return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance, label: periodInfo.label };
@@ -2354,11 +2530,12 @@ function escapeHtml(v) {
 function buildBackupPayload() {
   return {
     app: 'telegram-p2p-calculator',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     deals,
     banks,
-    cardExpenses
+    cardExpenses,
+    bankTransfers
   };
 }
 
@@ -2402,7 +2579,8 @@ function normalizeImportedDeals(value) {
         time: d.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         timestamp
       };
-      if (d.type === 'sell' && d.bank) normalized.bank = String(d.bank).trim();
+      if ((d.type === 'buy' || d.type === 'sell') && d.bank) normalized.bank = String(d.bank).trim();
+      if (d.bankBalanceApplied) normalized.bankBalanceApplied = true;
       return normalized;
     });
 }
@@ -2422,6 +2600,7 @@ function importBackup() {
   const importedDeals = normalizeImportedDeals(Array.isArray(parsed) ? parsed : parsed.deals);
   const importedBanks = Array.isArray(parsed.banks) ? parsed.banks : [];
   const importedCardExpenses = Array.isArray(parsed.cardExpenses) ? normalizeCardExpenses(parsed.cardExpenses) : [];
+  const importedBankTransfers = Array.isArray(parsed.bankTransfers) ? normalizeBankTransfers(parsed.bankTransfers) : [];
   if (!importedDeals) {
     tg.showAlert('В резервной копии не найдена история сделок.');
     return;
@@ -2429,9 +2608,10 @@ function importBackup() {
 
   tg.showConfirm('Импорт заменить текущие сделки и банки?', (ok) => {
     if (!ok) return;
+    bankTransfers = importedBankTransfers;
     deals = importedDeals;
-    banks = normalizeBanks(importedBanks);
     cardExpenses = importedCardExpenses;
+    banks = normalizeBanks(importedBanks);
     saveData();
     renderBankOptions();
     renderHistoryBankOptions();
@@ -2517,18 +2697,22 @@ function saveData() {
   saveJsonChunks('deals', deals);
   saveJsonChunks('banks', banks);
   saveJsonChunks('cardExpenses', cardExpenses);
+  saveJsonChunks('bankTransfers', bankTransfers);
 }
 
 async function loadData() {
   const chunkedDeals = await loadJsonChunks('deals', []);
   const chunkedBanks = await loadJsonChunks('banks', []);
   const chunkedCardExpenses = await loadJsonChunks('cardExpenses', []);
+  const chunkedBankTransfers = await loadJsonChunks('bankTransfers', []);
 
   deals = chunkedDeals || await loadLegacyJson('deals', []);
   banks = chunkedBanks || await loadLegacyJson('banks', []);
   cardExpenses = chunkedCardExpenses || await loadLegacyJson('cardExpenses', []);
+  bankTransfers = chunkedBankTransfers || await loadLegacyJson('bankTransfers', []);
 
   cardExpenses = normalizeCardExpenses(cardExpenses);
+  bankTransfers = normalizeBankTransfers(bankTransfers);
   banks = normalizeBanks(banks);
   saveData();
   render();
@@ -2544,6 +2728,10 @@ function normalizeBanks(saved) {
   });
   deals.forEach(d => { if (d.bank) addNormalizedBank(result, d.bank); });
   cardExpenses.forEach(e => { if (e.bank) addNormalizedBank(result, e.bank); });
+  bankTransfers.forEach(t => {
+    if (t.fromBank) addNormalizedBank(result, t.fromBank);
+    if (t.toBank) addNormalizedBank(result, t.toBank);
+  });
   return result;
 }
 function addNormalizedBank(list, name, id, balance) {
@@ -2577,6 +2765,27 @@ function normalizeCardExpenses(saved) {
         timestamp
       };
     });
+}
+
+function normalizeBankTransfers(saved) {
+  if (!Array.isArray(saved)) return [];
+  return saved
+    .filter(t => t && t.fromBank && t.toBank && t.amount !== undefined)
+    .map(t => {
+      const timestamp = t.timestamp || Date.now();
+      const dateObj = new Date(timestamp);
+      return {
+        id: t.id || Date.now() + Math.random(),
+        fromBank: String(t.fromBank).trim(),
+        toBank: String(t.toBank).trim(),
+        amount: parseFloat(t.amount) || 0,
+        note: t.note || '',
+        date: t.date || dateObj.toLocaleDateString('ru-RU'),
+        time: t.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        timestamp
+      };
+    })
+    .filter(t => t.fromBank && t.toBank && t.fromBank.toLowerCase() !== t.toBank.toLowerCase() && t.amount > 0);
 }
 
 // Автообновление времени
