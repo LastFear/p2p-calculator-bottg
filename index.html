@@ -684,6 +684,8 @@
   }
   .chart-dot.buy { background: var(--app-green); }
   .chart-dot.sell { background: var(--app-purple); }
+  .chart-dot.profit { background: var(--app-green); }
+  .chart-dot.loss { background: var(--app-danger); }
   .chart-row {
     display: grid;
     grid-template-columns: 50px 1fr;
@@ -724,12 +726,20 @@
   .chart-bar-fill.sell {
     background: linear-gradient(90deg, rgba(142, 92, 255, 0.3), var(--app-purple));
   }
+  .chart-bar-fill.profit-positive {
+    background: linear-gradient(90deg, rgba(50, 245, 163, 0.32), var(--app-green));
+  }
+  .chart-bar-fill.profit-negative {
+    background: linear-gradient(90deg, rgba(255, 95, 126, 0.26), var(--app-danger));
+  }
   .chart-bar-value {
     min-width: 58px;
     color: var(--app-muted);
     font-size: 11px;
     text-align: right;
   }
+  .chart-bar-value.positive { color: var(--app-green); }
+  .chart-bar-value.negative { color: var(--app-danger); }
   
   .editing {
     background: var(--app-gradient);
@@ -748,7 +758,7 @@
   <button id="periodToday" onclick="setStatsPeriod('today')">Сегодня</button>
 </div>
 <div class="stats">
-  <div class="stat-card">
+  <div class="stat-card clickable" onclick="openProfitChart()">
     <div class="stat-label">💰 Прибыль</div>
     <div class="stat-value" id="profit">0 ₽</div>
   </div>
@@ -763,6 +773,35 @@
   <div class="stat-card">
     <div class="stat-label">💵 Баланс ₽</div>
     <div class="stat-value" id="balanceRub">0 ₽</div>
+  </div>
+</div>
+
+<div class="chart-modal" id="profitModal" onclick="closeProfitChart(event)">
+  <div class="chart-panel" onclick="event.stopPropagation()">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">💰 Прибыль по месяцам</div>
+        <div class="chart-subtitle" id="profitChartSubtitle">Период: всё время</div>
+      </div>
+      <button class="chart-close" onclick="closeProfitChart()">×</button>
+    </div>
+    <div class="chart-body">
+      <div class="chart-summary">
+        <div class="chart-summary-card">
+          <div class="chart-summary-label">Итого прибыль</div>
+          <div class="chart-summary-value" id="chartProfitTotal">0 ₽</div>
+        </div>
+        <div class="chart-summary-card">
+          <div class="chart-summary-label">Лучший месяц</div>
+          <div class="chart-summary-value" id="chartProfitBest">0 ₽</div>
+        </div>
+      </div>
+      <div class="chart-legend">
+        <span><i class="chart-dot profit"></i>Плюс</span>
+        <span><i class="chart-dot loss"></i>Минус</span>
+      </div>
+      <div id="profitChart"></div>
+    </div>
   </div>
 </div>
 
@@ -1034,6 +1073,7 @@ function setStatsPeriod(period) {
   });
   updateStats();
   if (currentPage === 'banks') renderBankStats();
+  if (document.getElementById('profitModal')?.classList.contains('show')) renderProfitChart();
   if (document.getElementById('turnoverModal')?.classList.contains('show')) renderTurnoverChart();
 }
 
@@ -1689,6 +1729,92 @@ function getTurnoverBucketKey(date, period) {
   return `${y}-${m}`;
 }
 
+function getMonthKey(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+}
+
+function getMonthBucketsForPeriod(period) {
+  const periodInfo = getStatsPeriodRange(period);
+  const buckets = [];
+  const addMonth = (date) => buckets.push({
+    key: getMonthKey(date),
+    label: getMonthLabel(date, period === 'all'),
+    profit: 0
+  });
+
+  if (period === 'all') {
+    const tradeDates = deals
+      .filter(d => d.type === 'buy' || d.type === 'sell')
+      .map(d => getDealTimestamp(d))
+      .filter(Boolean)
+      .map(ts => new Date(ts));
+    if (!tradeDates.length) return [];
+
+    const minDate = new Date(Math.min(...tradeDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...tradeDates.map(d => d.getTime())));
+    const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+    while (cursor <= end) {
+      addMonth(cursor);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return buckets;
+  }
+
+  if (period === 'year') {
+    const year = new Date().getFullYear();
+    for (let month = 0; month < 12; month++) {
+      addMonth(new Date(year, month, 1));
+    }
+    return buckets;
+  }
+
+  const start = new Date(periodInfo.start);
+  const end = new Date();
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cursor <= endMonth) {
+    addMonth(cursor);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return buckets;
+}
+
+function getProfitMonthBuckets(period) {
+  const periodInfo = getStatsPeriodRange(period);
+  const buckets = getMonthBucketsForPeriod(period);
+  const bucketMap = new Map(buckets.map(bucket => [bucket.key, bucket]));
+  const sortedDeals = [...deals].sort((a, b) => getDealTimestamp(a) - getDealTimestamp(b));
+  const buyQueue = [];
+
+  sortedDeals.forEach(deal => {
+    if (deal.type === 'buy') {
+      buyQueue.push({ usdt: deal.usdt, rate: deal.rate });
+      return;
+    }
+
+    if (deal.type !== 'sell') return;
+
+    const inPeriod = isDealInPeriod(deal, periodInfo.start);
+    let usdtToSell = deal.usdt;
+    let dealProfit = 0;
+    while (usdtToSell > 0 && buyQueue.length) {
+      const buy = buyQueue[0];
+      const used = Math.min(usdtToSell, buy.usdt);
+      if (inPeriod) dealProfit += used * (deal.rate - buy.rate);
+      buy.usdt -= used;
+      usdtToSell -= used;
+      if (buy.usdt <= 0.0001) buyQueue.shift();
+    }
+
+    if (!inPeriod) return;
+    const bucket = bucketMap.get(getMonthKey(new Date(getDealTimestamp(deal))));
+    if (bucket) bucket.profit += dealProfit;
+  });
+
+  return buckets;
+}
+
 function getTurnoverBuckets(period) {
   const buckets = [];
   const periodInfo = getStatsPeriodRange(period);
@@ -1792,6 +1918,53 @@ function renderTurnoverChart() {
   }).join('');
 }
 
+function renderProfitChart() {
+  const periodInfo = getStatsPeriodRange(currentStatsPeriod);
+  const buckets = getProfitMonthBuckets(currentStatsPeriod);
+  const chart = document.getElementById('profitChart');
+  const totalProfit = buckets.reduce((sum, bucket) => sum + bucket.profit, 0);
+  const bestProfit = buckets.length ? Math.max(...buckets.map(bucket => bucket.profit)) : 0;
+  const maxAbs = Math.max(...buckets.map(bucket => Math.abs(bucket.profit)), 0);
+
+  document.getElementById('profitChartSubtitle').textContent = `Период: ${periodInfo.label}`;
+  document.getElementById('chartProfitTotal').textContent = formatRub(totalProfit);
+  document.getElementById('chartProfitTotal').className = 'chart-summary-value ' + (totalProfit >= 0 ? 'profit-positive' : 'profit-negative');
+  document.getElementById('chartProfitBest').textContent = formatRub(bestProfit);
+
+  if (!buckets.length || maxAbs <= 0) {
+    chart.innerHTML = '<div class="empty">Нет рассчитанной прибыли за выбранный период</div>';
+    return;
+  }
+
+  chart.innerHTML = buckets.map(bucket => {
+    const isPositive = bucket.profit >= 0;
+    const width = Math.max((Math.abs(bucket.profit) / maxAbs) * 100, Math.abs(bucket.profit) > 0 ? 2 : 0);
+    return `
+      <div class="chart-row">
+        <div class="chart-row-label">${escapeHtml(bucket.label)}</div>
+        <div class="chart-bars">
+          <div class="chart-bar-line">
+            <div class="chart-bar-track">
+              <div class="chart-bar-fill ${isPositive ? 'profit-positive' : 'profit-negative'}" style="width:${width}%"></div>
+            </div>
+            <div class="chart-bar-value ${isPositive ? 'positive' : 'negative'}">${formatCompactRub(bucket.profit)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openProfitChart() {
+  renderProfitChart();
+  document.getElementById('profitModal').classList.add('show');
+}
+
+function closeProfitChart(event) {
+  if (event && event.target && event.target.id !== 'profitModal') return;
+  document.getElementById('profitModal').classList.remove('show');
+}
+
 function openTurnoverChart() {
   renderTurnoverChart();
   document.getElementById('turnoverModal').classList.add('show');
@@ -1823,9 +1996,11 @@ function formatRub(n) {
 }
 
 function formatCompactRub(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1).replace('.', ',') + ' млн';
-  if (n >= 1000) return Math.round(n / 1000) + 'к';
-  return Math.round(n).toString();
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1000000) return sign + (abs / 1000000).toFixed(abs >= 10000000 ? 0 : 1).replace('.', ',') + ' млн';
+  if (abs >= 1000) return sign + Math.round(abs / 1000) + 'к';
+  return sign + Math.round(abs).toString();
 }
 
 function escapeHtml(v) {
