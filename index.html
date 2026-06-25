@@ -2293,26 +2293,20 @@ function calculate(period = 'all') {
   let buyQueue = [];
   let totalProfit = 0;
   let periodBuyRub = 0, periodSellRub = 0;
-  let currentBuyRub = 0, currentSellRub = 0;
   let currentBuyUsdt = 0, currentSellUsdt = 0;
   let currentDepositUsdt = 0;
-  let unappliedBuyRub = 0, unappliedSellRub = 0;
 
   sortedDeals.forEach(d => {
     const inPeriod = isDealInPeriod(d, periodStart);
 
     if (d.type === 'buy') {
       buyQueue.push({ usdt: d.usdt, rate: d.rate });
-      currentBuyRub += d.rub;
       currentBuyUsdt += d.usdt;
-      if (!d.bankBalanceApplied) unappliedBuyRub += d.rub;
       if (inPeriod) {
         periodBuyRub += d.rub;
       }
     } else if (d.type === 'sell') {
-      currentSellRub += d.rub;
       currentSellUsdt += d.usdt;
-      if (!d.bankBalanceApplied) unappliedSellRub += d.rub;
       if (inPeriod) {
         periodSellRub += d.rub;
       }
@@ -2335,7 +2329,7 @@ function calculate(period = 'all') {
   const totalBankBalance = banks.reduce((sum, b) => sum + (b.balance || 0), 0);
 
   const balanceUsdt = currentBuyUsdt + currentDepositUsdt - currentSellUsdt;
-  const balanceRub = unappliedSellRub - unappliedBuyRub + totalBankBalance;
+  const balanceRub = totalBankBalance;
   const turnover = periodBuyRub + periodSellRub;
 
   return { profit: totalProfit, balanceUsdt, balanceRub, turnover, totalBankBalance, label: periodInfo.label };
