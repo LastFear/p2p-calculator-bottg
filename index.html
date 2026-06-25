@@ -643,6 +643,14 @@
     border: 1px solid var(--app-border);
     background: linear-gradient(135deg, rgba(50, 245, 163, 0.1), rgba(142, 92, 255, 0.12)), var(--app-panel);
   }
+  .finance-card.clickable {
+    cursor: pointer;
+    transition: transform 0.16s, border-color 0.16s;
+  }
+  .finance-card.clickable:active {
+    transform: scale(0.98);
+    border-color: rgba(50, 245, 163, 0.45);
+  }
   .finance-label {
     color: var(--app-muted);
     font-size: 12px;
@@ -1098,14 +1106,27 @@
   <div class="section-title">💳 Финансы</div>
 
   <div class="finance-summary">
-    <div class="finance-card">
-      <div class="finance-label">Операций за неделю</div>
+    <div class="finance-card clickable" onclick="toggleFinanceFilters()">
+      <div class="finance-label" id="financeCountLabel">Операций за неделю</div>
       <div class="finance-value" id="financeWeekCount">0</div>
     </div>
-    <div class="finance-card">
-      <div class="finance-label">Траты за неделю</div>
+    <div class="finance-card clickable" onclick="toggleFinanceFilters()">
+      <div class="finance-label" id="financeTotalLabel">Траты за неделю</div>
       <div class="finance-value" id="financeWeekTotal">0 ₽</div>
     </div>
+  </div>
+  <div class="sort-controls finance-panel" id="financeFiltersPanel">
+    <div class="history-filter-row">
+      <button class="history-filter-btn" id="financePeriodAll" onclick="setFinancePeriod('all')">Всё</button>
+      <button class="history-filter-btn" id="financePeriodYear" onclick="setFinancePeriod('year')">Год</button>
+      <button class="history-filter-btn" id="financePeriodMonth" onclick="setFinancePeriod('month')">30 дней</button>
+      <button class="history-filter-btn" id="financePeriodWeek" onclick="setFinancePeriod('week')">7 дней</button>
+      <button class="history-filter-btn" id="financePeriodToday" onclick="setFinancePeriod('today')">Сегодня</button>
+    </div>
+    <select class="history-bank-filter" id="financeBankFilter" onchange="setFinanceBankFilter(this.value)">
+      <option value="">Все банки</option>
+    </select>
+    <button class="sort-btn" id="financeSortBtn" onclick="toggleFinanceSortOrder()">⬇️ Сортировка: новые сверху</button>
   </div>
 
   <div class="finance-actions">
@@ -1254,6 +1275,7 @@ document.getElementById('app').addEventListener('scroll', function(e) {
   const app = e.currentTarget;
   if (app.scrollTop + app.clientHeight >= app.scrollHeight - 240) {
     loadMoreHistoryIfNeeded();
+    loadMoreFinanceIfNeeded();
   }
 });
 
@@ -1270,6 +1292,11 @@ let banks = [];
 let cardExpenses = [];
 let bankTransfers = [];
 let activeFinancePanel = '';
+let financeFiltersOpen = false;
+let financePeriod = 'week';
+let financeSortDesc = true;
+let financeBankFilter = '';
+let financeVisibleCount = 25;
 let editingDealId = null;
 let sortDesc = true;
 let currentStatsPeriod = 'all';
@@ -1278,6 +1305,7 @@ let historyBankFilter = '';
 let historyVisibleCount = 25;
 const STORAGE_CHUNK_SIZE = 3000;
 const HISTORY_BATCH_SIZE = 25;
+const FINANCE_BATCH_SIZE = 25;
 
 // ---- Функции перемещения банков (кнопки) ----
 function moveBank(id, direction) {
@@ -1364,6 +1392,7 @@ function switchPage(page) {
     renderBanksList();
     renderBankStats();
   } else if (isFinance) {
+    resetFinancePagination();
     renderFinance();
   }
   blurActiveElement();
@@ -1542,10 +1571,40 @@ function renderFinancePanels() {
   const transferPanel = document.getElementById('financeTransferPanel');
   const expenseToggle = document.getElementById('financeExpenseToggle');
   const transferToggle = document.getElementById('financeTransferToggle');
+  const filtersPanel = document.getElementById('financeFiltersPanel');
   if (expensePanel) expensePanel.classList.toggle('active', activeFinancePanel === 'expense');
   if (transferPanel) transferPanel.classList.toggle('active', activeFinancePanel === 'transfer');
   if (expenseToggle) expenseToggle.classList.toggle('active', activeFinancePanel === 'expense');
   if (transferToggle) transferToggle.classList.toggle('active', activeFinancePanel === 'transfer');
+  if (filtersPanel) filtersPanel.classList.toggle('active', financeFiltersOpen);
+}
+
+function toggleFinanceFilters() {
+  financeFiltersOpen = !financeFiltersOpen;
+  renderFinancePanels();
+  blurActiveElement();
+}
+
+function resetFinancePagination() {
+  financeVisibleCount = FINANCE_BATCH_SIZE;
+}
+
+function setFinancePeriod(period) {
+  financePeriod = period;
+  resetFinancePagination();
+  renderFinance();
+}
+
+function setFinanceBankFilter(bankName) {
+  financeBankFilter = bankName;
+  resetFinancePagination();
+  renderFinance();
+}
+
+function toggleFinanceSortOrder() {
+  financeSortDesc = !financeSortDesc;
+  resetFinancePagination();
+  renderFinance();
 }
 
 function getWeekStartTimestamp() {
@@ -1554,6 +1613,25 @@ function getWeekStartTimestamp() {
   const day = start.getDay() || 7;
   start.setDate(start.getDate() - day + 1);
   return start.getTime();
+}
+
+function getFinancePeriodInfo(period = financePeriod) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (period === 'today') return { start: start.getTime(), label: 'за сегодня' };
+  if (period === 'week') {
+    start.setDate(start.getDate() - 6);
+    return { start: start.getTime(), label: 'за 7 дней' };
+  }
+  if (period === 'month') {
+    start.setDate(start.getDate() - 29);
+    return { start: start.getTime(), label: 'за 30 дней' };
+  }
+  if (period === 'year') {
+    start.setDate(start.getDate() - 364);
+    return { start: start.getTime(), label: 'за 365 дней' };
+  }
+  return { start: null, label: 'за всё время' };
 }
 
 function findBankByName(name) {
@@ -1725,19 +1803,82 @@ function renderFinanceActivity() {
   }).join('');
 }
 
+function getFinanceOperationBankNames(item) {
+  if (item.financeType === 'transfer') return [item.fromBank, item.toBank].filter(Boolean);
+  return [item.bank].filter(Boolean);
+}
+
+function getAllFinanceBankNames() {
+  const names = [];
+  cardExpenses.forEach(e => { if (e.bank) names.push(e.bank); });
+  bankTransfers.forEach(t => {
+    if (t.fromBank) names.push(t.fromBank);
+    if (t.toBank) names.push(t.toBank);
+  });
+  banks.forEach(b => { if (b.name) names.push(b.name); });
+  return [...new Set(names.map(name => String(name).trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+function renderFinanceBankFilterOptions() {
+  const select = document.getElementById('financeBankFilter');
+  if (!select) return;
+  const names = getAllFinanceBankNames();
+  const current = financeBankFilter;
+  select.innerHTML = '<option value="">Все банки</option>' +
+    names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  select.value = names.includes(current) ? current : '';
+  financeBankFilter = select.value;
+}
+
+function renderFinancePeriodButtons() {
+  ['all', 'year', 'month', 'week', 'today'].forEach(key => {
+    const btn = document.getElementById('financePeriod' + key.charAt(0).toUpperCase() + key.slice(1));
+    if (btn) btn.classList.toggle('active', key === financePeriod);
+  });
+  const sortBtn = document.getElementById('financeSortBtn');
+  if (sortBtn) sortBtn.textContent = financeSortDesc ? '⬇️ Сортировка: новые сверху' : '⬆️ Сортировка: старые сверху';
+}
+
+function getFinanceOperations() {
+  const periodInfo = getFinancePeriodInfo();
+  return [
+    ...cardExpenses.map(expense => ({ ...expense, financeType: 'expense' })),
+    ...bankTransfers.map(transfer => ({ ...transfer, financeType: 'transfer' }))
+  ]
+    .filter(item => periodInfo.start === null || (item.timestamp || 0) >= periodInfo.start)
+    .filter(item => {
+      if (!financeBankFilter) return true;
+      return getFinanceOperationBankNames(item)
+        .some(name => name && name.toLowerCase() === financeBankFilter.toLowerCase());
+    })
+    .sort((a, b) => {
+      const timeA = a.timestamp || 0;
+      const timeB = b.timestamp || 0;
+      return financeSortDesc ? timeB - timeA : timeA - timeB;
+    });
+}
+
+function loadMoreFinanceIfNeeded() {
+  if (currentPage !== 'finance') return;
+  const operations = getFinanceOperations();
+  if (financeVisibleCount >= operations.length) return;
+  financeVisibleCount = Math.min(financeVisibleCount + FINANCE_BATCH_SIZE, operations.length);
+  renderFinanceExpenses();
+}
+
 function renderFinanceExpenses() {
   const container = document.getElementById('financeExpenses');
   if (!container) return;
-  const operations = [
-    ...cardExpenses.map(expense => ({ ...expense, financeType: 'expense' })),
-    ...bankTransfers.map(transfer => ({ ...transfer, financeType: 'transfer' }))
-  ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  const operations = getFinanceOperations();
 
   if (!operations.length) {
     container.innerHTML = '<div class="empty">Финансовых операций пока нет</div>';
     return;
   }
-  container.innerHTML = operations.slice(0, 50).map(item => {
+  const visibleOperations = operations.slice(0, financeVisibleCount);
+  const hasMore = visibleOperations.length < operations.length;
+  container.innerHTML = visibleOperations.map(item => {
     if (item.financeType === 'transfer') {
       return `
     <div class="finance-expense-card">
@@ -1766,18 +1907,24 @@ function renderFinanceExpenses() {
       <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
     </div>
     `;
-  }).join('');
+  }).join('') +
+    (hasMore ? `<div class="empty">Показано ${visibleOperations.length} из ${operations.length}. Листай ниже, чтобы загрузить ещё.</div>` : '');
 }
 
 function renderFinance() {
   renderFinanceBankOptions();
+  renderFinanceBankFilterOptions();
+  renderFinancePeriodButtons();
   renderFinancePanels();
-  const weekStart = getWeekStartTimestamp();
-  const weekExpenses = cardExpenses.filter(e => (e.timestamp || 0) >= weekStart);
-  const weekTransfers = bankTransfers.filter(t => (t.timestamp || 0) >= weekStart);
-  const weekTotal = weekExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  document.getElementById('financeWeekCount').textContent = String(weekExpenses.length + weekTransfers.length);
-  document.getElementById('financeWeekTotal').textContent = formatRub(weekTotal);
+  const periodInfo = getFinancePeriodInfo();
+  const operations = getFinanceOperations();
+  const expenseTotal = operations
+    .filter(item => item.financeType === 'expense')
+    .reduce((sum, item) => sum + (item.amount || 0), 0);
+  document.getElementById('financeCountLabel').textContent = `Операций ${periodInfo.label}`;
+  document.getElementById('financeTotalLabel').textContent = `Траты ${periodInfo.label}`;
+  document.getElementById('financeWeekCount').textContent = String(operations.length);
+  document.getElementById('financeWeekTotal').textContent = formatRub(expenseTotal);
   renderFinanceActivity();
   renderFinanceExpenses();
 }
