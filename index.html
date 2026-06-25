@@ -638,10 +638,14 @@
     margin-bottom: 16px;
   }
   .finance-card {
-    padding: 12px;
-    border-radius: 10px;
+    min-height: 72px;
+    padding: 14px;
+    border-radius: 12px;
     border: 1px solid var(--app-border);
     background: linear-gradient(135deg, rgba(50, 245, 163, 0.1), rgba(142, 92, 255, 0.12)), var(--app-panel);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
   .finance-card.clickable {
     cursor: pointer;
@@ -659,21 +663,26 @@
   .finance-value {
     font-size: 17px;
     font-weight: bold;
+    text-align: center;
   }
   .finance-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 12px;
   }
   .finance-action-card {
     border: 1px solid var(--app-border);
-    border-radius: 10px;
-    padding: 10px;
+    border-radius: 12px;
+    min-height: 72px;
+    padding: 14px;
     background: linear-gradient(135deg, rgba(50, 245, 163, 0.13), rgba(142, 92, 255, 0.14)), var(--app-panel);
     color: var(--app-text);
     text-align: left;
     cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
   .finance-action-card.active {
     border-color: rgba(50, 245, 163, 0.5);
@@ -682,12 +691,33 @@
   .finance-action-title {
     font-size: 13px;
     font-weight: bold;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
   }
   .finance-action-sub {
     color: var(--app-muted);
     font-size: 10px;
     line-height: 1.25;
+  }
+  .finance-filter-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: stretch;
+    margin-top: 6px;
+  }
+  .finance-filter-controls .history-bank-filter {
+    min-width: 0;
+    height: 32px;
+    padding: 6px 10px;
+  }
+  .finance-filter-controls .sort-btn {
+    height: 32px;
+    padding: 6px 9px;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  #financeModalOperations {
+    margin-top: 8px;
   }
   .finance-panel {
     display: none;
@@ -1132,10 +1162,12 @@
           <button class="history-filter-btn" id="financePeriodWeek" onclick="setFinancePeriod('week')">Неделя</button>
           <button class="history-filter-btn" id="financePeriodToday" onclick="setFinancePeriod('today')">Сегодня</button>
         </div>
-        <select class="history-bank-filter" id="financeBankFilter" onchange="setFinanceBankFilter(this.value)">
-          <option value="">Все банки</option>
-        </select>
-        <button class="sort-btn" id="financeSortBtn" onclick="toggleFinanceSortOrder()">⬇️ Сортировка: новые сверху</button>
+        <div class="finance-filter-controls">
+          <select class="history-bank-filter" id="financeBankFilter" onchange="setFinanceBankFilter(this.value)">
+            <option value="">Все банки</option>
+          </select>
+          <button class="sort-btn" id="financeSortBtn" onclick="toggleFinanceSortOrder()">⬇️ Новые сверху</button>
+        </div>
         <div id="financeModalOperations"></div>
       </div>
     </div>
@@ -1861,7 +1893,7 @@ function renderFinancePeriodButtons() {
     if (btn) btn.classList.toggle('active', key === financePeriod);
   });
   const sortBtn = document.getElementById('financeSortBtn');
-  if (sortBtn) sortBtn.textContent = financeSortDesc ? '⬇️ Сортировка: новые сверху' : '⬆️ Сортировка: старые сверху';
+  if (sortBtn) sortBtn.textContent = financeSortDesc ? '⬇️ Новые сверху' : '⬆️ Старые сверху';
   const subtitle = document.getElementById('financeFilterSubtitle');
   if (subtitle) {
     const periodInfo = getFinancePeriodInfo();
