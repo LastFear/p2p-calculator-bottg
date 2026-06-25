@@ -492,14 +492,27 @@
   .deal-edit-form input,
   .deal-edit-form select {
     width: 100%;
+    height: 41px;
     padding: 8px 9px;
     border: 1px solid var(--app-border);
     border-radius: 8px;
     background: #17202b;
     color: var(--app-text);
     font-size: 13px;
+    line-height: 1.2;
     outline: none;
     color-scheme: dark;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .deal-edit-form input[type="date"],
+  .deal-edit-form input[type="time"] {
+    min-height: 41px;
+    text-align: left;
+  }
+  .deal-edit-form input[type="date"]::-webkit-date-and-time-value,
+  .deal-edit-form input[type="time"]::-webkit-date-and-time-value {
+    text-align: left;
   }
   .deal-edit-form input:focus,
   .deal-edit-form select:focus,
