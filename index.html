@@ -635,21 +635,42 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
   }
   .finance-card {
+    position: relative;
     min-height: 72px;
     padding: 14px;
     border-radius: 12px;
     border: 1px solid var(--app-border);
     background: linear-gradient(135deg, rgba(50, 245, 163, 0.1), rgba(142, 92, 255, 0.12)), var(--app-panel);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
     justify-content: center;
+    overflow: hidden;
   }
   .finance-card.clickable {
     cursor: pointer;
-    transition: transform 0.16s, border-color 0.16s;
+    transition: transform 0.16s, border-color 0.16s, box-shadow 0.16s;
+  }
+  .finance-card.clickable::after {
+    content: "›";
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 18px;
+    line-height: 17px;
+    text-align: center;
+  }
+  .finance-card.clickable:hover {
+    border-color: rgba(50, 245, 163, 0.34);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36), 0 0 18px rgba(50, 245, 163, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
   .finance-card.clickable:active {
     transform: scale(0.98);
@@ -659,6 +680,7 @@
     color: var(--app-muted);
     font-size: 12px;
     margin-bottom: 4px;
+    text-align: center;
   }
   .finance-value {
     font-size: 17px;
@@ -672,17 +694,42 @@
     margin-bottom: 12px;
   }
   .finance-action-card {
+    position: relative;
     border: 1px solid var(--app-border);
     border-radius: 12px;
     min-height: 72px;
     padding: 14px;
     background: linear-gradient(135deg, rgba(50, 245, 163, 0.13), rgba(142, 92, 255, 0.14)), var(--app-panel);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     color: var(--app-text);
     text-align: left;
     cursor: pointer;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    transition: transform 0.16s, border-color 0.16s, box-shadow 0.16s;
+    overflow: hidden;
+  }
+  .finance-action-card::after {
+    content: "›";
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 18px;
+    line-height: 17px;
+    text-align: center;
+  }
+  .finance-action-card:hover {
+    border-color: rgba(142, 92, 255, 0.36);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36), 0 0 18px rgba(142, 92, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  .finance-action-card:active {
+    transform: scale(0.98);
   }
   .finance-action-card.active {
     border-color: rgba(50, 245, 163, 0.5);
@@ -1137,11 +1184,11 @@
 
   <div class="finance-summary">
     <div class="finance-card clickable" onclick="toggleFinanceFilters()">
-      <div class="finance-label" id="financeCountLabel">Операций за неделю</div>
+      <div class="finance-label" id="financeCountLabel">📋 Операций за неделю</div>
       <div class="finance-value" id="financeWeekCount">0</div>
     </div>
     <div class="finance-card clickable" onclick="toggleFinanceFilters()">
-      <div class="finance-label" id="financeTotalLabel">Траты за неделю</div>
+      <div class="finance-label" id="financeTotalLabel">💸 Траты за неделю</div>
       <div class="finance-value" id="financeWeekTotal">0 ₽</div>
     </div>
   </div>
@@ -2042,8 +2089,8 @@ function renderFinance() {
   const expenseTotal = operations
     .filter(item => item.financeType === 'expense')
     .reduce((sum, item) => sum + (item.amount || 0), 0);
-  document.getElementById('financeCountLabel').textContent = `Операций ${periodInfo.label}`;
-  document.getElementById('financeTotalLabel').textContent = `Траты ${periodInfo.label}`;
+  document.getElementById('financeCountLabel').textContent = `📋 Операций ${periodInfo.label}`;
+  document.getElementById('financeTotalLabel').textContent = `💸 Траты ${periodInfo.label}`;
   document.getElementById('financeWeekCount').textContent = String(operations.length);
   document.getElementById('financeWeekTotal').textContent = formatRub(expenseTotal);
   renderFinanceActivity();
