@@ -1250,6 +1250,12 @@ document.addEventListener('click', function(e) {
     blurActiveElement();
   }
 });
+document.getElementById('app').addEventListener('scroll', function(e) {
+  const app = e.currentTarget;
+  if (app.scrollTop + app.clientHeight >= app.scrollHeight - 240) {
+    loadMoreHistoryIfNeeded();
+  }
+});
 
 // ---- Остальные глобальные переменные ----
 const LIMIT_DAILY = 100000;
@@ -1269,7 +1275,9 @@ let sortDesc = true;
 let currentStatsPeriod = 'all';
 let historyTypeFilter = 'all';
 let historyBankFilter = '';
+let historyVisibleCount = 25;
 const STORAGE_CHUNK_SIZE = 3000;
+const HISTORY_BATCH_SIZE = 25;
 
 // ---- Функции перемещения банков (кнопки) ----
 function moveBank(id, direction) {
@@ -1349,6 +1357,7 @@ function switchPage(page) {
   if (isTrade) {
     renderBankOptions();
   } else if (isHistory) {
+    resetHistoryPagination();
     renderHistoryBankOptions();
     renderHistory();
   } else if (isBanks) {
@@ -1365,6 +1374,7 @@ function switchPage(page) {
 function toggleSortOrder() {
   sortDesc = !sortDesc;
   document.getElementById('sortBtn').textContent = sortDesc ? '⬇️ Сортировка: новые сверху' : '⬆️ Сортировка: старые сверху';
+  resetHistoryPagination();
   renderHistory();
 }
 
@@ -1386,11 +1396,13 @@ function setHistoryTypeFilter(type) {
     const btn = document.getElementById('historyType' + key.charAt(0).toUpperCase() + key.slice(1));
     if (btn) btn.classList.toggle('active', key === type);
   });
+  resetHistoryPagination();
   renderHistory();
 }
 
 function setHistoryBankFilter(bankName) {
   historyBankFilter = bankName;
+  resetHistoryPagination();
   renderHistory();
 }
 
@@ -2196,63 +2208,80 @@ function renderHistory() {
     return;
   }
 
-  const filteredDeals = deals.filter(d => {
-    const typeMatches = historyTypeFilter === 'all' || d.type === historyTypeFilter;
-    const bankMatches = !historyBankFilter || (d.bank && d.bank.toLowerCase() === historyBankFilter.toLowerCase());
-    return typeMatches && bankMatches;
-  });
+  const filteredDeals = getFilteredHistoryDeals();
 
   if (!filteredDeals.length) {
     container.innerHTML = '<div class="empty">По фильтру сделок нет</div>';
     return;
   }
 
-  const sorted = [...filteredDeals].sort((a, b) => {
-    const timeA = a.timestamp || 0;
-    const timeB = b.timestamp || 0;
-    return sortDesc ? timeB - timeA : timeA - timeB;
-  });
+  const visibleDeals = filteredDeals.slice(0, historyVisibleCount);
+  const hasMore = visibleDeals.length < filteredDeals.length;
 
-  container.innerHTML = sorted.map(d => {
-    const isEditing = editingDealId === d.id;
-    const timeSince = d.timestamp ? getTimeSince(d.timestamp) : '';
-    const timeClass = d.timestamp ? (Date.now() - d.timestamp > 3600000 ? 'warning' : 'ok') : '';
+  container.innerHTML = visibleDeals.map(renderHistoryDeal).join('') +
+    (hasMore ? `<div class="empty">Показано ${visibleDeals.length} из ${filteredDeals.length}. Листай ниже, чтобы загрузить ещё.</div>` : '');
+}
 
-    let typeLabel, typeClass;
-    if (d.type === 'buy') { typeLabel = '📥 Покупка'; typeClass = 'buy'; }
-    else if (d.type === 'sell') { typeLabel = '📤 Продажа'; typeClass = 'sell'; }
-    else { typeLabel = '💰 Пополнение'; typeClass = 'deposit'; }
+function getFilteredHistoryDeals() {
+  return deals
+    .filter(d => {
+      const typeMatches = historyTypeFilter === 'all' || d.type === historyTypeFilter;
+      const bankMatches = !historyBankFilter || (d.bank && d.bank.toLowerCase() === historyBankFilter.toLowerCase());
+      return typeMatches && bankMatches;
+    })
+    .sort((a, b) => {
+      const timeA = a.timestamp || 0;
+      const timeB = b.timestamp || 0;
+      return sortDesc ? timeB - timeA : timeA - timeB;
+    });
+}
 
-    let details = `${d.usdt.toFixed(2)} USDT`;
-    if (d.type !== 'deposit') {
-      details += ` • ${formatRub(d.rub)} • курс ${d.rate.toFixed(2)}`;
-    } else {
-      details += ` • бонус`;
-    }
+function resetHistoryPagination() {
+  historyVisibleCount = HISTORY_BATCH_SIZE;
+}
 
-    let actionsHtml;
-    if (isEditing) {
-      actionsHtml = '';
-    } else {
-      actionsHtml = `
-        <button class="btn-edit" onclick="startEditDeal(${d.id})">✏️</button>
-        <button class="deal-delete" onclick="deleteDeal(${d.id})">🗑</button>
-      `;
-    }
+function loadMoreHistoryIfNeeded() {
+  if (currentPage !== 'history') return;
+  const filteredDeals = getFilteredHistoryDeals();
+  if (historyVisibleCount >= filteredDeals.length) return;
+  historyVisibleCount = Math.min(historyVisibleCount + HISTORY_BATCH_SIZE, filteredDeals.length);
+  renderHistory();
+}
 
-    return `
-      <div class="deal deal-${typeClass}">
-        <div class="deal-info">
-          <div>${typeLabel} ${details}</div>
-          <div class="deal-sub">${d.date} ${d.time || ''}</div>
-          ${d.bank ? `<div class="deal-bank">🏦 ${escapeHtml(d.bank)}</div>` : ''}
-          ${d.timestamp ? `<div class="deal-time-since ${timeClass}">⏱ ${timeSince}</div>` : ''}
-          ${isEditing ? buildDealEditForm(d) : ''}
-        </div>
-        <div class="deal-actions">${actionsHtml}</div>
+function renderHistoryDeal(d) {
+  const isEditing = editingDealId === d.id;
+  const timeSince = d.timestamp ? getTimeSince(d.timestamp) : '';
+  const timeClass = d.timestamp ? (Date.now() - d.timestamp > 3600000 ? 'warning' : 'ok') : '';
+
+  let typeLabel, typeClass;
+  if (d.type === 'buy') { typeLabel = '📥 Покупка'; typeClass = 'buy'; }
+  else if (d.type === 'sell') { typeLabel = '📤 Продажа'; typeClass = 'sell'; }
+  else { typeLabel = '💰 Пополнение'; typeClass = 'deposit'; }
+
+  let details = `${d.usdt.toFixed(2)} USDT`;
+  if (d.type !== 'deposit') {
+    details += ` • ${formatRub(d.rub)} • курс ${d.rate.toFixed(2)}`;
+  } else {
+    details += ` • бонус`;
+  }
+
+  const actionsHtml = isEditing ? '' : `
+    <button class="btn-edit" onclick="startEditDeal(${d.id})">✏️</button>
+    <button class="deal-delete" onclick="deleteDeal(${d.id})">🗑</button>
+  `;
+
+  return `
+    <div class="deal deal-${typeClass}">
+      <div class="deal-info">
+        <div>${typeLabel} ${details}</div>
+        <div class="deal-sub">${d.date} ${d.time || ''}</div>
+        ${d.bank ? `<div class="deal-bank">🏦 ${escapeHtml(d.bank)}</div>` : ''}
+        ${d.timestamp ? `<div class="deal-time-since ${timeClass}">⏱ ${timeSince}</div>` : ''}
+        ${isEditing ? buildDealEditForm(d) : ''}
       </div>
-    `;
-  }).join('');
+      <div class="deal-actions">${actionsHtml}</div>
+    </div>
+  `;
 }
 
 function getDealTimestamp(deal) {
