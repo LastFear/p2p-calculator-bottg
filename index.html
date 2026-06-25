@@ -1115,18 +1115,29 @@
       <div class="finance-value" id="financeWeekTotal">0 ₽</div>
     </div>
   </div>
-  <div class="sort-controls finance-panel" id="financeFiltersPanel">
-    <div class="history-filter-row">
-      <button class="history-filter-btn" id="financePeriodAll" onclick="setFinancePeriod('all')">Всё</button>
-      <button class="history-filter-btn" id="financePeriodYear" onclick="setFinancePeriod('year')">Год</button>
-      <button class="history-filter-btn" id="financePeriodMonth" onclick="setFinancePeriod('month')">30 дней</button>
-      <button class="history-filter-btn" id="financePeriodWeek" onclick="setFinancePeriod('week')">7 дней</button>
-      <button class="history-filter-btn" id="financePeriodToday" onclick="setFinancePeriod('today')">Сегодня</button>
+  <div class="chart-modal" id="financeFiltersModal" onclick="closeFinanceFilters(event)">
+    <div class="chart-panel" onclick="event.stopPropagation()">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">💳 Фильтры финансов</div>
+          <div class="chart-subtitle" id="financeFilterSubtitle">Период: за неделю</div>
+        </div>
+        <button class="chart-close" onclick="closeFinanceFilters()">×</button>
+      </div>
+      <div class="chart-body">
+        <div class="history-filter-row">
+          <button class="history-filter-btn" id="financePeriodAll" onclick="setFinancePeriod('all')">Всё</button>
+          <button class="history-filter-btn" id="financePeriodYear" onclick="setFinancePeriod('year')">Год</button>
+          <button class="history-filter-btn" id="financePeriodMonth" onclick="setFinancePeriod('month')">Месяц</button>
+          <button class="history-filter-btn" id="financePeriodWeek" onclick="setFinancePeriod('week')">Неделя</button>
+          <button class="history-filter-btn" id="financePeriodToday" onclick="setFinancePeriod('today')">Сегодня</button>
+        </div>
+        <select class="history-bank-filter" id="financeBankFilter" onchange="setFinanceBankFilter(this.value)">
+          <option value="">Все банки</option>
+        </select>
+        <button class="sort-btn" id="financeSortBtn" onclick="toggleFinanceSortOrder()">⬇️ Сортировка: новые сверху</button>
+      </div>
     </div>
-    <select class="history-bank-filter" id="financeBankFilter" onchange="setFinanceBankFilter(this.value)">
-      <option value="">Все банки</option>
-    </select>
-    <button class="sort-btn" id="financeSortBtn" onclick="toggleFinanceSortOrder()">⬇️ Сортировка: новые сверху</button>
   </div>
 
   <div class="finance-actions">
@@ -1292,7 +1303,6 @@ let banks = [];
 let cardExpenses = [];
 let bankTransfers = [];
 let activeFinancePanel = '';
-let financeFiltersOpen = false;
 let financePeriod = 'week';
 let financeSortDesc = true;
 let financeBankFilter = '';
@@ -1571,18 +1581,21 @@ function renderFinancePanels() {
   const transferPanel = document.getElementById('financeTransferPanel');
   const expenseToggle = document.getElementById('financeExpenseToggle');
   const transferToggle = document.getElementById('financeTransferToggle');
-  const filtersPanel = document.getElementById('financeFiltersPanel');
   if (expensePanel) expensePanel.classList.toggle('active', activeFinancePanel === 'expense');
   if (transferPanel) transferPanel.classList.toggle('active', activeFinancePanel === 'transfer');
   if (expenseToggle) expenseToggle.classList.toggle('active', activeFinancePanel === 'expense');
   if (transferToggle) transferToggle.classList.toggle('active', activeFinancePanel === 'transfer');
-  if (filtersPanel) filtersPanel.classList.toggle('active', financeFiltersOpen);
 }
 
 function toggleFinanceFilters() {
-  financeFiltersOpen = !financeFiltersOpen;
-  renderFinancePanels();
+  renderFinance();
+  document.getElementById('financeFiltersModal').classList.add('show');
   blurActiveElement();
+}
+
+function closeFinanceFilters(event) {
+  if (event && event.target && event.target.id !== 'financeFiltersModal') return;
+  document.getElementById('financeFiltersModal').classList.remove('show');
 }
 
 function resetFinancePagination() {
@@ -1618,20 +1631,20 @@ function getWeekStartTimestamp() {
 function getFinancePeriodInfo(period = financePeriod) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  if (period === 'today') return { start: start.getTime(), label: 'за сегодня' };
+  if (period === 'today') return { start: start.getTime(), label: 'за сегодня', filterLabel: 'сегодня' };
   if (period === 'week') {
     start.setDate(start.getDate() - 6);
-    return { start: start.getTime(), label: 'за 7 дней' };
+    return { start: start.getTime(), label: 'за неделю', filterLabel: 'неделя' };
   }
   if (period === 'month') {
     start.setDate(start.getDate() - 29);
-    return { start: start.getTime(), label: 'за 30 дней' };
+    return { start: start.getTime(), label: 'за месяц', filterLabel: 'месяц' };
   }
   if (period === 'year') {
     start.setDate(start.getDate() - 364);
-    return { start: start.getTime(), label: 'за 365 дней' };
+    return { start: start.getTime(), label: 'за год', filterLabel: 'год' };
   }
-  return { start: null, label: 'за всё время' };
+  return { start: null, label: 'за всё время', filterLabel: 'всё время' };
 }
 
 function findBankByName(name) {
@@ -1838,6 +1851,13 @@ function renderFinancePeriodButtons() {
   });
   const sortBtn = document.getElementById('financeSortBtn');
   if (sortBtn) sortBtn.textContent = financeSortDesc ? '⬇️ Сортировка: новые сверху' : '⬆️ Сортировка: старые сверху';
+  const subtitle = document.getElementById('financeFilterSubtitle');
+  if (subtitle) {
+    const periodInfo = getFinancePeriodInfo();
+    const bankText = financeBankFilter ? ` • ${financeBankFilter}` : ' • все банки';
+    const sortText = financeSortDesc ? ' • новые сверху' : ' • старые сверху';
+    subtitle.textContent = `Период: ${periodInfo.filterLabel}${bankText}${sortText}`;
+  }
 }
 
 function getFinanceOperations() {
