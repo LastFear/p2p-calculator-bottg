@@ -927,9 +927,9 @@
 <!-- Верхние карточки статистики -->
 <div class="stats-filter">
   <button class="active" id="periodAll" onclick="setStatsPeriod('all')">Всё время</button>
-  <button id="periodYear" onclick="setStatsPeriod('year')">365 дней</button>
-  <button id="periodMonth" onclick="setStatsPeriod('month')">30 дней</button>
-  <button id="periodWeek" onclick="setStatsPeriod('week')">7 дней</button>
+  <button id="periodYear" onclick="setStatsPeriod('year')">Год</button>
+  <button id="periodMonth" onclick="setStatsPeriod('month')">Месяц</button>
+  <button id="periodWeek" onclick="setStatsPeriod('week')">Неделя</button>
   <button id="periodToday" onclick="setStatsPeriod('today')">Сегодня</button>
 </div>
 <div class="stats">
@@ -1136,6 +1136,7 @@
           <option value="">Все банки</option>
         </select>
         <button class="sort-btn" id="financeSortBtn" onclick="toggleFinanceSortOrder()">⬇️ Сортировка: новые сверху</button>
+        <div id="financeModalOperations"></div>
       </div>
     </div>
   </div>
@@ -1307,6 +1308,7 @@ let financePeriod = 'week';
 let financeSortDesc = true;
 let financeBankFilter = '';
 let financeVisibleCount = 25;
+let financeModalVisibleCount = 25;
 let editingDealId = null;
 let sortDesc = true;
 let currentStatsPeriod = 'all';
@@ -1589,6 +1591,7 @@ function renderFinancePanels() {
 
 function toggleFinanceFilters() {
   renderFinance();
+  renderFinanceModalOperations();
   document.getElementById('financeFiltersModal').classList.add('show');
   blurActiveElement();
 }
@@ -1600,24 +1603,32 @@ function closeFinanceFilters(event) {
 
 function resetFinancePagination() {
   financeVisibleCount = FINANCE_BATCH_SIZE;
+  financeModalVisibleCount = FINANCE_BATCH_SIZE;
+}
+
+function resetFinanceModalPagination() {
+  financeModalVisibleCount = FINANCE_BATCH_SIZE;
 }
 
 function setFinancePeriod(period) {
   financePeriod = period;
   resetFinancePagination();
   renderFinance();
+  renderFinanceModalOperations();
 }
 
 function setFinanceBankFilter(bankName) {
   financeBankFilter = bankName;
-  resetFinancePagination();
+  resetFinanceModalPagination();
   renderFinance();
+  renderFinanceModalOperations();
 }
 
 function toggleFinanceSortOrder() {
   financeSortDesc = !financeSortDesc;
-  resetFinancePagination();
+  resetFinanceModalPagination();
   renderFinance();
+  renderFinanceModalOperations();
 }
 
 function getWeekStartTimestamp() {
@@ -1861,36 +1872,49 @@ function renderFinancePeriodButtons() {
 }
 
 function getFinanceOperations() {
+  return getFinanceOperationsForList({ useBankFilter: true, useSort: true });
+}
+
+function getFinanceSummaryOperations() {
+  return getFinanceOperationsForList({ useBankFilter: false, useSort: false });
+}
+
+function getFinanceOperationsForList({ useBankFilter, useSort }) {
   const periodInfo = getFinancePeriodInfo();
-  return [
+  const operations = [
     ...cardExpenses.map(expense => ({ ...expense, financeType: 'expense' })),
     ...bankTransfers.map(transfer => ({ ...transfer, financeType: 'transfer' }))
   ]
     .filter(item => periodInfo.start === null || (item.timestamp || 0) >= periodInfo.start)
     .filter(item => {
-      if (!financeBankFilter) return true;
+      if (!useBankFilter || !financeBankFilter) return true;
       return getFinanceOperationBankNames(item)
         .some(name => name && name.toLowerCase() === financeBankFilter.toLowerCase());
-    })
-    .sort((a, b) => {
+    });
+  return operations.sort((a, b) => {
       const timeA = a.timestamp || 0;
       const timeB = b.timestamp || 0;
-      return financeSortDesc ? timeB - timeA : timeA - timeB;
+      if (useSort) return financeSortDesc ? timeB - timeA : timeA - timeB;
+      return timeB - timeA;
     });
 }
 
 function loadMoreFinanceIfNeeded() {
   if (currentPage !== 'finance') return;
-  const operations = getFinanceOperations();
-  if (financeVisibleCount >= operations.length) return;
-  financeVisibleCount = Math.min(financeVisibleCount + FINANCE_BATCH_SIZE, operations.length);
-  renderFinanceExpenses();
+  const isModalOpen = document.getElementById('financeFiltersModal')?.classList.contains('show');
+  const operations = isModalOpen ? getFinanceOperations() : getFinanceSummaryOperations();
+  const currentCount = isModalOpen ? financeModalVisibleCount : financeVisibleCount;
+  if (currentCount >= operations.length) return;
+  if (isModalOpen) financeModalVisibleCount = Math.min(financeModalVisibleCount + FINANCE_BATCH_SIZE, operations.length);
+  else financeVisibleCount = Math.min(financeVisibleCount + FINANCE_BATCH_SIZE, operations.length);
+  if (isModalOpen) renderFinanceModalOperations();
+  else renderFinanceExpenses();
 }
 
 function renderFinanceExpenses() {
   const container = document.getElementById('financeExpenses');
   if (!container) return;
-  const operations = getFinanceOperations();
+  const operations = getFinanceSummaryOperations();
 
   if (!operations.length) {
     container.innerHTML = '<div class="empty">Финансовых операций пока нет</div>';
@@ -1931,13 +1955,58 @@ function renderFinanceExpenses() {
     (hasMore ? `<div class="empty">Показано ${visibleOperations.length} из ${operations.length}. Листай ниже, чтобы загрузить ещё.</div>` : '');
 }
 
+function renderFinanceModalOperations() {
+  const container = document.getElementById('financeModalOperations');
+  if (!container) return;
+  const operations = getFinanceOperations();
+  if (!operations.length) {
+    container.innerHTML = '<div class="empty">По выбранным фильтрам операций нет</div>';
+    return;
+  }
+  const visibleOperations = operations.slice(0, financeModalVisibleCount);
+  const hasMore = visibleOperations.length < operations.length;
+  container.innerHTML = visibleOperations.map(renderFinanceOperationCard).join('') +
+    (hasMore ? `<div class="empty">Показано ${visibleOperations.length} из ${operations.length}. Листай ниже, чтобы загрузить ещё.</div>` : '');
+}
+
+function renderFinanceOperationCard(item) {
+  if (item.financeType === 'transfer') {
+    return `
+    <div class="finance-expense-card">
+      <div class="finance-expense-info">
+        <div>↔️ Перевод • ${formatRub(item.amount)}</div>
+        <div class="finance-expense-sub">
+          ${escapeHtml(item.fromBank)} → ${escapeHtml(item.toBank)}<br>
+          ${item.date} ${item.time || ''}
+          ${item.note ? `<br>${escapeHtml(item.note)}` : ''}
+        </div>
+      </div>
+      <button class="finance-delete" onclick="deleteBankTransfer(${item.id})">🗑</button>
+    </div>
+    `;
+  }
+  return `
+    <div class="finance-expense-card">
+      <div class="finance-expense-info">
+        <div>💳 ${escapeHtml(item.category)} • ${formatRub(item.amount)}</div>
+        <div class="finance-expense-sub">
+          🏦 ${escapeHtml(item.bank)}<br>
+          ${item.date} ${item.time || ''}
+          ${item.note ? `<br>${escapeHtml(item.note)}` : ''}
+        </div>
+      </div>
+      <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
+    </div>
+  `;
+}
+
 function renderFinance() {
   renderFinanceBankOptions();
   renderFinanceBankFilterOptions();
   renderFinancePeriodButtons();
   renderFinancePanels();
   const periodInfo = getFinancePeriodInfo();
-  const operations = getFinanceOperations();
+  const operations = getFinanceSummaryOperations();
   const expenseTotal = operations
     .filter(item => item.financeType === 'expense')
     .reduce((sum, item) => sum + (item.amount || 0), 0);
@@ -1947,6 +2016,9 @@ function renderFinance() {
   document.getElementById('financeWeekTotal').textContent = formatRub(expenseTotal);
   renderFinanceActivity();
   renderFinanceExpenses();
+  if (document.getElementById('financeFiltersModal')?.classList.contains('show')) {
+    renderFinanceModalOperations();
+  }
 }
 
 // Новая функция обновления статистики (без перерисовки списка банков)
