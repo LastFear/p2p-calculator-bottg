@@ -592,6 +592,42 @@
     border: 1px solid var(--app-border);
     background: linear-gradient(135deg, rgba(50, 245, 163, 0.1), rgba(142, 92, 255, 0.12)), var(--app-panel);
   }
+  .backup-panel.in-modal {
+    margin-top: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+  .backup-card {
+    width: 100%;
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid var(--app-border);
+    background: linear-gradient(135deg, rgba(50, 245, 163, 0.12), rgba(142, 92, 255, 0.14)), var(--app-panel);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: var(--app-text);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.16s, border-color 0.16s, box-shadow 0.16s;
+  }
+  .backup-card:hover {
+    border-color: rgba(50, 245, 163, 0.34);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36), 0 0 18px rgba(50, 245, 163, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  .backup-card:active {
+    transform: scale(0.98);
+  }
+  .backup-card-title {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  .backup-card-sub {
+    color: var(--app-muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
   .backup-panel textarea {
     width: 100%;
     min-height: 110px;
@@ -624,6 +660,9 @@
   .backup-actions button.primary {
     background: var(--app-gradient);
     color: #07100d;
+  }
+  .backup-actions button:last-child {
+    grid-column: 1 / -1;
   }
   .backup-hint {
     margin-top: 6px;
@@ -1146,18 +1185,35 @@
     <div id="bankStats"></div>
   </div>
 
-  <div class="backup-panel">
-    <div class="section-title" style="margin:0;">🧰 Резервная копия</div>
-    <div class="backup-hint">Экспортируй JSON перед крупными правками. Для восстановления вставь копию в поле и нажми импорт.</div>
-    <div class="backup-status" id="autoBackupStatus">Автобэкап: проверяю...</div>
-    <textarea id="backupData" placeholder="Здесь появится резервная копия или сюда можно вставить JSON для импорта"></textarea>
-    <div class="backup-actions">
-      <button class="primary" onclick="exportBackup()">Экспорт</button>
-      <button onclick="copyBackup()">Скопировать</button>
-      <button onclick="importBackup()">Импорт</button>
-      <button onclick="clearBackupField()">Очистить</button>
-      <button onclick="createAutoBackupNow()">Авто сейчас</button>
-      <button onclick="loadLatestAutoBackupToField()">Открыть авто</button>
+  <button class="backup-card" onclick="openBackupModal()">
+    <div class="backup-card-title">🧰 Резервные копии</div>
+    <div class="backup-card-sub" id="backupCardStatus">Последний бэкап: проверяю...</div>
+  </button>
+
+  <div class="chart-modal" id="backupModal" onclick="closeBackupModal(event)">
+    <div class="chart-panel" onclick="event.stopPropagation()">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">🧰 Резервные копии</div>
+          <div class="chart-subtitle">Сохрани или восстанови данные без лишней суеты</div>
+        </div>
+        <button class="chart-close" onclick="closeBackupModal()">×</button>
+      </div>
+      <div class="chart-body">
+        <div class="backup-panel in-modal">
+          <div class="backup-hint">Для восстановления загрузи бэкап в поле и нажми «Применить». Перед применением текущие данные сохранятся в страховочную копию.</div>
+          <div class="backup-status" id="autoBackupStatus">Автобэкап: проверяю...</div>
+          <textarea id="backupData" placeholder="Здесь появится резервная копия или сюда можно вставить JSON для восстановления"></textarea>
+          <div class="backup-actions">
+            <button class="primary" onclick="exportBackup()">Экспорт</button>
+            <button onclick="copyBackup()">Скопировать</button>
+            <button onclick="importBackup()">Применить</button>
+            <button onclick="clearBackupField()">Очистить</button>
+            <button onclick="createAutoBackupNow()">Создать бэкап</button>
+            <button onclick="loadLatestAutoBackupToField()">Загрузить последний бэкап</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -3074,7 +3130,7 @@ function normalizeImportedDeals(value) {
 
 function importBackup() {
   const raw = document.getElementById('backupData').value.trim();
-  if (!raw) { tg.showAlert('Вставь JSON резервной копии в поле.'); return; }
+  if (!raw) { tg.showAlert('Вставь JSON резервной копии в поле или загрузи последний бэкап.'); return; }
 
   let parsed;
   try {
@@ -3093,7 +3149,7 @@ function importBackup() {
     return;
   }
 
-  tg.showConfirm('Импорт заменить текущие сделки и банки?', async (ok) => {
+  tg.showConfirm('Применить бэкап и заменить текущие сделки, банки и финансы?', async (ok) => {
     if (!ok) return;
     await createAutoBackup('before-import', true, true);
     bankTransfers = importedBankTransfers;
@@ -3105,12 +3161,23 @@ function importBackup() {
     renderHistoryBankOptions();
     renderFinanceBankOptions();
     render();
-    tg.showAlert('Резервная копия импортирована.');
+    tg.showAlert('Бэкап применён.');
   });
 }
 
 function clearBackupField() {
   document.getElementById('backupData').value = '';
+}
+
+function openBackupModal() {
+  renderAutoBackupStatus();
+  document.getElementById('backupModal').classList.add('show');
+  blurActiveElement();
+}
+
+function closeBackupModal(event) {
+  if (event && event.target && event.target.id !== 'backupModal') return;
+  document.getElementById('backupModal').classList.remove('show');
 }
 
 async function loadAutoBackupMeta() {
@@ -3207,39 +3274,47 @@ async function createAutoBackupNow() {
   }
   const created = await createAutoBackup('manual', true, false);
   renderAutoBackupStatus();
-  tg.showAlert(created ? 'Автобэкап сохранён.' : 'Не удалось создать автобэкап.');
+  tg.showAlert(created ? 'Бэкап создан.' : 'Не удалось создать бэкап.');
 }
 
 async function loadLatestAutoBackupToField() {
   const meta = await loadAutoBackupMeta();
   const latest = meta.backups[0];
   if (!latest) {
-    tg.showAlert('Автобэкапов пока нет.');
+    tg.showAlert('Бэкапов пока нет.');
     return;
   }
   const payload = await loadJsonValueChunks(`autoBackup_${latest.slot}`, null);
   if (!payload) {
-    tg.showAlert('Не удалось открыть автокопию.');
+    tg.showAlert('Не удалось загрузить последний бэкап.');
     return;
   }
   const textarea = document.getElementById('backupData');
   textarea.value = JSON.stringify(payload, null, 2);
   textarea.focus();
   textarea.select();
-  tg.showAlert('Последний автобэкап загружен в поле. Для восстановления нажми Импорт.');
+  tg.showAlert('Последний бэкап загружен в поле. Для восстановления нажми «Применить».');
 }
 
 async function renderAutoBackupStatus() {
   const el = document.getElementById('autoBackupStatus');
-  if (!el) return;
+  const cardEl = document.getElementById('backupCardStatus');
+  if (!el && !cardEl) return;
   const meta = await loadAutoBackupMeta();
   const latest = meta.backups[0];
   if (!latest) {
-    el.textContent = 'Автобэкап: пока нет. Создаётся автоматически раз в сутки после изменений.';
+    if (el) el.textContent = 'Бэкап: пока нет. Создаётся автоматически раз в сутки после изменений.';
+    if (cardEl) cardEl.textContent = 'Последний бэкап: пока нет';
     return;
   }
   const counts = latest.counts || {};
-  el.textContent = `Автобэкап: ${formatBackupDate(latest.createdAt)} • сделок ${counts.deals || 0} • банков ${counts.banks || 0} • финансовых операций ${(counts.expenses || 0) + (counts.transfers || 0)}. Храню последние ${AUTO_BACKUP_MAX_SLOTS}.`;
+  const financeCount = (counts.expenses || 0) + (counts.transfers || 0);
+  if (el) {
+    el.textContent = `Последний бэкап: ${formatBackupDate(latest.createdAt)} • сделок ${counts.deals || 0} • банков ${counts.banks || 0} • финансовых операций ${financeCount}. Храню последние ${AUTO_BACKUP_MAX_SLOTS}.`;
+  }
+  if (cardEl) {
+    cardEl.textContent = `Последний бэкап: ${formatBackupDate(latest.createdAt)} • ${counts.deals || 0} сделок • ${financeCount} фин. операций`;
+  }
 }
 
 function cloudGetItem(key) {
