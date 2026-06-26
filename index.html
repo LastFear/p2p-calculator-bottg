@@ -1565,6 +1565,7 @@ const LARGE_USDT_CONFIRM = 1000;
 const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const UNDO_DELETE_MS = 12000;
 const INTEGRITY_CHECK_START_TS = new Date(2026, 5, 25, 0, 0, 0, 0).getTime();
+const CASHBACK_TRANSFER_SOURCE = 'Кэшбэк';
 
 let currentMode = 'buy';
 let currentPage = 'trade';
@@ -1904,12 +1905,15 @@ function renderFinanceBankOptions() {
   const currentFrom = transferFrom?.value || '';
   const currentTo = transferTo?.value || '';
   const options = banks.map(bank => `<option value="${escapeHtml(bank.name)}">${escapeHtml(bank.name)} — остаток ${formatRub(bank.balance || 0)}</option>`).join('');
+  const cashbackOption = `<option value="${escapeHtml(CASHBACK_TRANSFER_SOURCE)}">${CASHBACK_TRANSFER_SOURCE}</option>`;
   select.innerHTML = '<option value="">Выбери банк</option>' +
     options;
   if (banks.some(bank => bank.name === current)) select.value = current;
   if (transferFrom) {
-    transferFrom.innerHTML = '<option value="">Откуда списать</option>' + options;
-    if (banks.some(bank => bank.name === currentFrom)) transferFrom.value = currentFrom;
+    transferFrom.innerHTML = '<option value="">Откуда списать</option>' + cashbackOption + options;
+    if (isCashbackTransferSource(currentFrom) || banks.some(bank => bank.name === currentFrom)) {
+      transferFrom.value = currentFrom;
+    }
   }
   if (transferTo) {
     transferTo.innerHTML = '<option value="">Куда зачислить</option>' + options;
@@ -2005,6 +2009,10 @@ function getFinancePeriodInfo(period = financePeriod) {
 
 function findBankByName(name) {
   return banks.find(b => b.name && b.name.toLowerCase() === String(name || '').toLowerCase());
+}
+
+function isCashbackTransferSource(name) {
+  return String(name || '').trim().toLowerCase() === CASHBACK_TRANSFER_SOURCE.toLowerCase();
 }
 
 function adjustBankBalance(bankName, amount) {
@@ -2203,17 +2211,19 @@ async function addBankTransfer() {
 
   if (!fromBankName) { tg.showAlert('Выбери банк, откуда списать.'); return; }
   if (!toBankName) { tg.showAlert('Выбери банк, куда зачислить.'); return; }
-  if (fromBankName.toLowerCase() === toBankName.toLowerCase()) { tg.showAlert('Банки должны быть разными.'); return; }
+  const fromIsCashback = isCashbackTransferSource(fromBankName);
+  if (!fromIsCashback && fromBankName.toLowerCase() === toBankName.toLowerCase()) { tg.showAlert('Банки должны быть разными.'); return; }
   if (amount <= 0) { tg.showAlert('Сумма перевода должна быть больше нуля.'); return; }
 
-  const fromBank = findBankByName(fromBankName);
+  const fromBank = fromIsCashback ? null : findBankByName(fromBankName);
   const toBank = findBankByName(toBankName);
-  if (!fromBank || !toBank) { tg.showAlert('Один из банков не найден. Обнови список банков.'); return; }
+  if (!fromIsCashback && !fromBank) { tg.showAlert('Банк списания не найден. Обнови список банков.'); return; }
+  if (!toBank) { tg.showAlert('Банк зачисления не найден. Обнови список банков.'); return; }
 
   const now = new Date();
   const transfer = {
     id: Date.now(),
-    fromBank: fromBank.name,
+    fromBank: fromIsCashback ? CASHBACK_TRANSFER_SOURCE : fromBank.name,
     toBank: toBank.name,
     amount,
     note,
@@ -2228,7 +2238,7 @@ async function addBankTransfer() {
   const largeOk = confirmLargeOperation({ rub: amount, label: 'перевод' });
   if (largeOk !== true && !await largeOk) return;
 
-  fromBank.balance = (fromBank.balance || 0) - amount;
+  if (!fromIsCashback) fromBank.balance = (fromBank.balance || 0) - amount;
   toBank.balance = (toBank.balance || 0) + amount;
   bankTransfers.push(transfer);
 
@@ -2250,7 +2260,7 @@ function deleteBankTransfer(id) {
   tg.showConfirm('Удалить перевод и вернуть остатки банков обратно?', (ok) => {
     if (!ok) return;
     const removed = cloneData(transfer);
-    adjustBankBalance(transfer.fromBank, transfer.amount || 0);
+    if (!isCashbackTransferSource(transfer.fromBank)) adjustBankBalance(transfer.fromBank, transfer.amount || 0);
     adjustBankBalance(transfer.toBank, -(transfer.amount || 0));
     bankTransfers = bankTransfers.filter(t => t.id !== id);
     saveData();
@@ -2258,10 +2268,10 @@ function deleteBankTransfer(id) {
     renderBanksList();
     updateStats();
     showUndoToast('Перевод удалён', () => {
-      if (removed.fromBank && !findBankByName(removed.fromBank)) addNormalizedBank(banks, removed.fromBank);
+      if (removed.fromBank && !isCashbackTransferSource(removed.fromBank) && !findBankByName(removed.fromBank)) addNormalizedBank(banks, removed.fromBank);
       if (removed.toBank && !findBankByName(removed.toBank)) addNormalizedBank(banks, removed.toBank);
       banks = normalizeBanks(banks);
-      adjustBankBalance(removed.fromBank, -(removed.amount || 0));
+      if (!isCashbackTransferSource(removed.fromBank)) adjustBankBalance(removed.fromBank, -(removed.amount || 0));
       adjustBankBalance(removed.toBank, removed.amount || 0);
       bankTransfers.push(removed);
       saveData();
@@ -2327,7 +2337,9 @@ function renderFinanceActivity() {
 }
 
 function getFinanceOperationBankNames(item) {
-  if (item.financeType === 'transfer') return [item.fromBank, item.toBank].filter(Boolean);
+  if (item.financeType === 'transfer') {
+    return [item.fromBank, item.toBank].filter(name => name && !isCashbackTransferSource(name));
+  }
   return [item.bank].filter(Boolean);
 }
 
@@ -2335,7 +2347,7 @@ function getAllFinanceBankNames() {
   const names = [];
   cardExpenses.forEach(e => { if (e.bank) names.push(e.bank); });
   bankTransfers.forEach(t => {
-    if (t.fromBank) names.push(t.fromBank);
+    if (t.fromBank && !isCashbackTransferSource(t.fromBank)) names.push(t.fromBank);
     if (t.toBank) names.push(t.toBank);
   });
   banks.forEach(b => { if (b.name) names.push(b.name); });
@@ -3554,10 +3566,11 @@ function runIntegrityCheck() {
   });
 
   checkedBankTransfers.forEach(transfer => {
+    const fromIsCashback = isCashbackTransferSource(transfer.fromBank);
     if (!transfer.fromBank || !transfer.toBank) addIntegrityIssue(issues, 'danger', `Перевод без банка отправителя или получателя: id ${transfer.id || 'без id'}.`);
-    if (transfer.fromBank && !bankNames.has(String(transfer.fromBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод из банка не из списка: ${transfer.fromBank}.`);
+    if (transfer.fromBank && !fromIsCashback && !bankNames.has(String(transfer.fromBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод из банка не из списка: ${transfer.fromBank}.`);
     if (transfer.toBank && !bankNames.has(String(transfer.toBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод в банк не из списка: ${transfer.toBank}.`);
-    if (String(transfer.fromBank || '').toLowerCase() === String(transfer.toBank || '').toLowerCase()) addIntegrityIssue(issues, 'danger', `Перевод внутри одного банка: ${transfer.fromBank}.`);
+    if (!fromIsCashback && String(transfer.fromBank || '').toLowerCase() === String(transfer.toBank || '').toLowerCase()) addIntegrityIssue(issues, 'danger', `Перевод внутри одного банка: ${transfer.fromBank}.`);
     if ((transfer.amount || 0) <= 0) addIntegrityIssue(issues, 'danger', `Перевод с суммой <= 0: id ${transfer.id || 'без id'}.`);
     if ((transfer.timestamp || 0) > futureLimit) addIntegrityIssue(issues, 'warn', `Перевод из будущего: ${transfer.date || ''} ${transfer.time || ''}.`);
   });
@@ -3949,7 +3962,7 @@ function normalizeBanks(saved) {
   deals.forEach(d => { if (d.bank) addNormalizedBank(result, d.bank); });
   cardExpenses.forEach(e => { if (e.bank) addNormalizedBank(result, e.bank); });
   bankTransfers.forEach(t => {
-    if (t.fromBank) addNormalizedBank(result, t.fromBank);
+    if (t.fromBank && !isCashbackTransferSource(t.fromBank)) addNormalizedBank(result, t.fromBank);
     if (t.toBank) addNormalizedBank(result, t.toBank);
   });
   return result;
@@ -4005,7 +4018,9 @@ function normalizeBankTransfers(saved) {
         timestamp
       };
     })
-    .filter(t => t.fromBank && t.toBank && t.fromBank.toLowerCase() !== t.toBank.toLowerCase() && t.amount > 0);
+    .filter(t => t.fromBank && t.toBank &&
+      (isCashbackTransferSource(t.fromBank) || t.fromBank.toLowerCase() !== t.toBank.toLowerCase()) &&
+      t.amount > 0);
 }
 
 // Автообновление времени
