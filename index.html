@@ -3601,7 +3601,7 @@ function runIntegrityCheck() {
 
   const storageKb = Math.ceil(getStorageTextLength() / 1024);
   const chunks = estimateCloudStorageChunks();
-  const header = `Проверено с 25.06.2026: сделок ${checkedDeals.length} из ${deals.length}, покупок картой ${checkedCardExpenses.length} из ${cardExpenses.length}, переводов ${checkedBankTransfers.length} из ${bankTransfers.length}. Банков всего: ${banks.length}.\nДанные: примерно ${storageKb} КБ, ключей CloudStorage минимум ${chunks + 4}.`;
+  const header = `Проверено с 25.06.2026: сделок ${checkedDeals.length} из ${checkedDeals.length}, покупок картой ${checkedCardExpenses.length} из ${checkedCardExpenses.length}, переводов ${checkedBankTransfers.length} из ${checkedBankTransfers.length}. Банков всего: ${banks.length}.\nДанные: примерно ${storageKb} КБ, ключей CloudStorage минимум ${chunks + 4}.`;
   const dangerCount = issues.filter(item => item.level === 'danger').length;
   const warnCount = issues.filter(item => item.level === 'warn').length;
   reportEl.className = `integrity-report ${dangerCount ? 'danger' : warnCount ? 'warn' : 'ok'}`;
