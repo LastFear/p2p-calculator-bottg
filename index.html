@@ -679,6 +679,43 @@
     font-size: 12px;
     line-height: 1.35;
   }
+  .undo-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(86px + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
+    transform: translate(-50%, 18px);
+    width: min(calc(100% - 28px), 520px);
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(18, 21, 29, 0.96);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+    color: var(--app-text);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s, transform 0.18s;
+    z-index: 45;
+  }
+  .undo-toast.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+  }
+  .undo-toast button {
+    border: none;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: var(--app-gradient);
+    color: #07100d;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+  }
   .finance-summary {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1342,6 +1379,10 @@
 </div>
 
 <!-- Нижняя навигация -->
+<div class="undo-toast" id="undoToast">
+  <span id="undoToastText">Удалено</span>
+  <button onclick="restoreLastDeleted()">Восстановить</button>
+</div>
 <div class="bottom-nav">
   <button class="active" id="bottomTrade" onclick="switchPage('trade')">💱 Сделки</button>
   <button id="bottomHistory" onclick="switchPage('history')">📜 История</button>
@@ -1415,6 +1456,10 @@ const LIMIT_DAILY = 100000;
 const LIMIT_BIG = 40000;
 const MAX_BIG_DEALS = 1;
 const HEAT_WARN_PERCENT = 70;
+const LARGE_RUB_CONFIRM = 100000;
+const LARGE_USDT_CONFIRM = 1000;
+const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+const UNDO_DELETE_MS = 12000;
 
 let currentMode = 'buy';
 let currentPage = 'trade';
@@ -1441,6 +1486,9 @@ const AUTO_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const AUTO_BACKUP_MAX_SLOTS = 3;
 let autoBackupTimer = null;
 let autoBackupRunning = false;
+let lastDeletedAction = null;
+let undoDeleteTimer = null;
+let operationInProgress = false;
 
 // ---- Функции перемещения банков (кнопки) ----
 function moveBank(id, direction) {
@@ -1642,6 +1690,7 @@ function deleteBank(id) {
   }
   tg.showConfirm('Удалить банк?', (ok) => {
     if (ok) {
+      const removed = cloneData(bank);
       banks = banks.filter(b => b.id !== id);
       saveData();
       renderBankOptions();
@@ -1650,6 +1699,12 @@ function deleteBank(id) {
       renderBanksList();
       renderBankStats();
       updateStats();
+      showUndoToast('Банк удалён', () => {
+        banks.push(removed);
+        banks = normalizeBanks(banks);
+        saveData();
+        refreshAfterDataChange();
+      });
     }
   });
 }
@@ -1793,7 +1848,116 @@ function adjustBankBalance(bankName, amount) {
   return true;
 }
 
-function addCardExpense() {
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function confirmAsync(message) {
+  return new Promise(resolve => {
+    tg.showConfirm(message, ok => resolve(Boolean(ok)));
+  });
+}
+
+function beginOperation() {
+  if (operationInProgress) {
+    tg.showAlert('Операция уже обрабатывается. Подожди секунду.');
+    return false;
+  }
+  operationInProgress = true;
+  return true;
+}
+
+function endOperation() {
+  operationInProgress = false;
+}
+
+function isRecentTimestamp(timestamp, windowMs = DUPLICATE_WINDOW_MS) {
+  return timestamp && Date.now() - timestamp <= windowMs;
+}
+
+function numbersClose(a, b, precision = 0.000001) {
+  return Math.abs((Number(a) || 0) - (Number(b) || 0)) <= precision;
+}
+
+function formatUsdtValue(value) {
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(Number(value) || 0);
+}
+
+function confirmLargeOperation({ rub = 0, usdt = 0, label = 'операция' }) {
+  if ((rub || 0) < LARGE_RUB_CONFIRM && (usdt || 0) < LARGE_USDT_CONFIRM) return true;
+  const parts = [];
+  if ((rub || 0) >= LARGE_RUB_CONFIRM) parts.push(formatRub(rub));
+  if ((usdt || 0) >= LARGE_USDT_CONFIRM) parts.push(`${formatUsdtValue(usdt)} USDT`);
+  return confirmAsync(`Крупная сумма: ${parts.join(' / ')}. Продолжить: ${label}?`);
+}
+
+function findDuplicateDeal(candidate, ignoredId = null) {
+  return deals.find(d => {
+    if (d.id === ignoredId || d.type !== candidate.type) return false;
+    if (!isRecentTimestamp(d.timestamp)) return false;
+    const sameBank = String(d.bank || '').toLowerCase() === String(candidate.bank || '').toLowerCase();
+    return sameBank &&
+      numbersClose(d.rub, candidate.rub, 0.01) &&
+      numbersClose(d.usdt, candidate.usdt, 0.0001);
+  });
+}
+
+function findDuplicateCardExpense(candidate) {
+  return cardExpenses.find(e => {
+    if (!isRecentTimestamp(e.timestamp)) return false;
+    return String(e.bank || '').toLowerCase() === String(candidate.bank || '').toLowerCase() &&
+      String(e.category || '').toLowerCase() === String(candidate.category || '').toLowerCase() &&
+      numbersClose(e.amount, candidate.amount, 0.01);
+  });
+}
+
+function findDuplicateBankTransfer(candidate) {
+  return bankTransfers.find(t => {
+    if (!isRecentTimestamp(t.timestamp)) return false;
+    return String(t.fromBank || '').toLowerCase() === String(candidate.fromBank || '').toLowerCase() &&
+      String(t.toBank || '').toLowerCase() === String(candidate.toBank || '').toLowerCase() &&
+      numbersClose(t.amount, candidate.amount, 0.01);
+  });
+}
+
+function confirmDuplicateOperation(duplicate, label = 'операция') {
+  if (!duplicate) return true;
+  return confirmAsync(`Похоже на дубль: недавно уже была похожая операция (${label}). Всё равно продолжить?`);
+}
+
+function refreshAfterDataChange() {
+  renderBankOptions();
+  renderHistoryBankOptions();
+  renderFinanceBankOptions();
+  render();
+  updateStats();
+  if (document.getElementById('financeFiltersModal')?.classList.contains('show')) renderFinanceModalOperations();
+}
+
+function showUndoToast(message, restoreFn) {
+  clearTimeout(undoDeleteTimer);
+  lastDeletedAction = restoreFn;
+  const toast = document.getElementById('undoToast');
+  const text = document.getElementById('undoToastText');
+  if (!toast || !text) return;
+  text.textContent = message;
+  toast.classList.add('show');
+  undoDeleteTimer = setTimeout(() => {
+    toast.classList.remove('show');
+    lastDeletedAction = null;
+  }, UNDO_DELETE_MS);
+}
+
+function restoreLastDeleted() {
+  if (!lastDeletedAction) return;
+  const restoreFn = lastDeletedAction;
+  lastDeletedAction = null;
+  clearTimeout(undoDeleteTimer);
+  document.getElementById('undoToast')?.classList.remove('show');
+  restoreFn();
+}
+
+async function addCardExpense() {
   const bankName = document.getElementById('expenseBank').value;
   const category = document.getElementById('expenseCategory').value;
   const amount = parseNumberInput(document.getElementById('expenseAmount').value);
@@ -1806,8 +1970,7 @@ function addCardExpense() {
   if (!bank) { tg.showAlert('Банк не найден. Обнови список банков.'); return; }
 
   const now = new Date();
-  bank.balance = (bank.balance || 0) - amount;
-  cardExpenses.push({
+  const expense = {
     id: Date.now(),
     bank: bank.name,
     category,
@@ -1816,7 +1979,16 @@ function addCardExpense() {
     date: now.toLocaleDateString('ru-RU'),
     time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     timestamp: now.getTime()
-  });
+  };
+  if (!beginOperation()) return;
+  try {
+  const duplicateOk = confirmDuplicateOperation(findDuplicateCardExpense(expense), 'покупка картой');
+  if (duplicateOk !== true && !await duplicateOk) return;
+  const largeOk = confirmLargeOperation({ rub: amount, label: 'покупку картой' });
+  if (largeOk !== true && !await largeOk) return;
+
+  bank.balance = (bank.balance || 0) - amount;
+  cardExpenses.push(expense);
 
   document.getElementById('expenseAmount').value = '';
   document.getElementById('expenseNote').value = '';
@@ -1825,6 +1997,9 @@ function addCardExpense() {
   renderFinance();
   renderBanksList();
   updateStats();
+  } finally {
+    endOperation();
+  }
 }
 
 function deleteCardExpense(id) {
@@ -1832,6 +2007,7 @@ function deleteCardExpense(id) {
   if (!expense) return;
   tg.showConfirm('Удалить покупку и вернуть сумму на банк?', (ok) => {
     if (!ok) return;
+    const removed = cloneData(expense);
     const bank = findBankByName(expense.bank);
     if (bank) bank.balance = (bank.balance || 0) + (expense.amount || 0);
     cardExpenses = cardExpenses.filter(e => e.id !== id);
@@ -1839,10 +2015,21 @@ function deleteCardExpense(id) {
     renderFinance();
     renderBanksList();
     updateStats();
+    showUndoToast('Покупка удалена', () => {
+      if (removed.bank && !findBankByName(removed.bank)) {
+        addNormalizedBank(banks, removed.bank);
+        banks = normalizeBanks(banks);
+      }
+      const restoredBank = findBankByName(removed.bank);
+      if (restoredBank) restoredBank.balance = (restoredBank.balance || 0) - (removed.amount || 0);
+      cardExpenses.push(removed);
+      saveData();
+      refreshAfterDataChange();
+    });
   });
 }
 
-function addBankTransfer() {
+async function addBankTransfer() {
   const fromBankName = document.getElementById('transferFromBank').value;
   const toBankName = document.getElementById('transferToBank').value;
   const amount = parseNumberInput(document.getElementById('transferAmount').value);
@@ -1858,9 +2045,7 @@ function addBankTransfer() {
   if (!fromBank || !toBank) { tg.showAlert('Один из банков не найден. Обнови список банков.'); return; }
 
   const now = new Date();
-  fromBank.balance = (fromBank.balance || 0) - amount;
-  toBank.balance = (toBank.balance || 0) + amount;
-  bankTransfers.push({
+  const transfer = {
     id: Date.now(),
     fromBank: fromBank.name,
     toBank: toBank.name,
@@ -1869,7 +2054,17 @@ function addBankTransfer() {
     date: now.toLocaleDateString('ru-RU'),
     time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     timestamp: now.getTime()
-  });
+  };
+  if (!beginOperation()) return;
+  try {
+  const duplicateOk = confirmDuplicateOperation(findDuplicateBankTransfer(transfer), 'перевод');
+  if (duplicateOk !== true && !await duplicateOk) return;
+  const largeOk = confirmLargeOperation({ rub: amount, label: 'перевод' });
+  if (largeOk !== true && !await largeOk) return;
+
+  fromBank.balance = (fromBank.balance || 0) - amount;
+  toBank.balance = (toBank.balance || 0) + amount;
+  bankTransfers.push(transfer);
 
   document.getElementById('transferAmount').value = '';
   document.getElementById('transferNote').value = '';
@@ -1878,6 +2073,9 @@ function addBankTransfer() {
   renderFinance();
   renderBanksList();
   updateStats();
+  } finally {
+    endOperation();
+  }
 }
 
 function deleteBankTransfer(id) {
@@ -1885,6 +2083,7 @@ function deleteBankTransfer(id) {
   if (!transfer) return;
   tg.showConfirm('Удалить перевод и вернуть остатки банков обратно?', (ok) => {
     if (!ok) return;
+    const removed = cloneData(transfer);
     adjustBankBalance(transfer.fromBank, transfer.amount || 0);
     adjustBankBalance(transfer.toBank, -(transfer.amount || 0));
     bankTransfers = bankTransfers.filter(t => t.id !== id);
@@ -1892,6 +2091,16 @@ function deleteBankTransfer(id) {
     renderFinance();
     renderBanksList();
     updateStats();
+    showUndoToast('Перевод удалён', () => {
+      if (removed.fromBank && !findBankByName(removed.fromBank)) addNormalizedBank(banks, removed.fromBank);
+      if (removed.toBank && !findBankByName(removed.toBank)) addNormalizedBank(banks, removed.toBank);
+      banks = normalizeBanks(banks);
+      adjustBankBalance(removed.fromBank, -(removed.amount || 0));
+      adjustBankBalance(removed.toBank, removed.amount || 0);
+      bankTransfers.push(removed);
+      saveData();
+      refreshAfterDataChange();
+    });
   });
 }
 
@@ -2245,7 +2454,7 @@ function reverseDealBankEffect(deal) {
 }
 
 // ---- Добавление сделки ----
-function addDeal() {
+async function addDeal() {
   const usdt = parseNumberInput(document.getElementById('inputUsdt').value);
   let rub = parseNumberInput(document.getElementById('inputRub').value);
   const bank = document.getElementById('inputBank').value;
@@ -2281,6 +2490,12 @@ function addDeal() {
     timestamp: now.getTime()
   };
   if (currentMode === 'buy' || currentMode === 'sell') deal.bank = bank;
+  if (!beginOperation()) return;
+  try {
+  const duplicateOk = confirmDuplicateOperation(findDuplicateDeal(deal), 'сделка');
+  if (duplicateOk !== true && !await duplicateOk) return;
+  const largeOk = confirmLargeOperation({ rub, usdt, label: 'сделку' });
+  if (largeOk !== true && !await largeOk) return;
   applyDealBankEffect(deal);
 
   deals.push(deal);
@@ -2289,6 +2504,9 @@ function addDeal() {
   saveData();
   render(); // перерисовывает все вкладки, но у нас не останавливает фокус, потому что мы не вводим в тот момент
   blurActiveElement();
+  } finally {
+    endOperation();
+  }
 }
 
 // ---- Удаление и редактирование сделки ----
@@ -2296,10 +2514,24 @@ function deleteDeal(id) {
   tg.showConfirm('Удалить сделку?', (ok) => {
     if (ok) {
       const deal = deals.find(d => d.id === id);
+      if (!deal) return;
+      const removed = cloneData(deal);
       reverseDealBankEffect(deal);
       deals = deals.filter(d => d.id !== id);
       saveData();
       render();
+      showUndoToast('Сделка удалена', () => {
+        const restored = cloneData(removed);
+        if (restored.bank && !findBankByName(restored.bank)) {
+          addNormalizedBank(banks, restored.bank);
+          banks = normalizeBanks(banks);
+        }
+        restored.bankBalanceApplied = false;
+        applyDealBankEffect(restored);
+        deals.push(restored);
+        saveData();
+        refreshAfterDataChange();
+      });
     }
   });
 }
@@ -2342,7 +2574,7 @@ function updateEditDealFields(id) {
   if (bankWrap) bankWrap.style.display = type === 'deposit' ? 'none' : 'block';
 }
 
-function saveEditDeal(id) {
+async function saveEditDeal(id) {
   const deal = deals.find(d => d.id === id);
   if (!deal) return;
   const type = document.getElementById(`edit-type-${id}`).value;
@@ -2360,6 +2592,10 @@ function saveEditDeal(id) {
   const [year, month, day] = dateValue.split('-').map(Number);
   const [hour, minute] = timeValue.split(':').map(Number);
   const dateObj = new Date(year, month - 1, day, hour || 0, minute || 0, 0, 0);
+  if (!beginOperation()) return;
+  try {
+  const largeOk = confirmLargeOperation({ rub, usdt, label: 'сохранить правку сделки' });
+  if (largeOk !== true && !await largeOk) return;
 
   reverseDealBankEffect(deal);
   deal.type = type;
@@ -2382,6 +2618,9 @@ function saveEditDeal(id) {
   renderBankOptions();
   renderHistoryBankOptions();
   render();
+  } finally {
+    endOperation();
+  }
 }
 
 function cancelEditDeal() {
