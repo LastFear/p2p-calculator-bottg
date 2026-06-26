@@ -911,6 +911,11 @@
     justify-content: space-between;
     gap: 10px;
   }
+  .finance-expense-card.debt {
+    border-left-color: #ffbd59;
+    background: linear-gradient(135deg, rgba(255, 189, 89, 0.12), rgba(142, 92, 255, 0.12)), var(--app-panel);
+    box-shadow: 0 10px 24px rgba(255, 189, 89, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
   .finance-expense-info {
     flex: 1;
     min-width: 0;
@@ -1431,6 +1436,7 @@
         <option value="Здоровье">Здоровье</option>
         <option value="Развлечения">Развлечения</option>
         <option value="Подписки">Подписки</option>
+        <option value="Долг">Долг</option>
         <option value="Прочее">Прочее</option>
       </select>
     </div>
@@ -2390,6 +2396,21 @@ function getFinanceSummaryOperations() {
   return getFinanceOperationsForList({ useBankFilter: false, useSort: false });
 }
 
+function isDebtExpense(item) {
+  return item && item.financeType === 'expense' &&
+    String(item.category || '').trim().toLowerCase() === 'долг';
+}
+
+function getActiveDebtExpenses() {
+  return cardExpenses
+    .filter(expense => String(expense.category || '').trim().toLowerCase() === 'долг')
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+}
+
+function getFinanceMainOperations() {
+  return getFinanceSummaryOperations().filter(item => !isDebtExpense(item));
+}
+
 function getFinanceOperationsForList({ useBankFilter, useSort }) {
   const periodInfo = getFinancePeriodInfo();
   const operations = [
@@ -2413,7 +2434,7 @@ function getFinanceOperationsForList({ useBankFilter, useSort }) {
 function loadMoreFinanceIfNeeded() {
   if (currentPage !== 'finance') return;
   const isModalOpen = document.getElementById('financeFiltersModal')?.classList.contains('show');
-  const operations = isModalOpen ? getFinanceOperations() : getFinanceSummaryOperations();
+  const operations = isModalOpen ? getFinanceOperations() : getFinanceMainOperations();
   const currentCount = isModalOpen ? financeModalVisibleCount : financeVisibleCount;
   if (currentCount >= operations.length) return;
   if (isModalOpen) financeModalVisibleCount = Math.min(financeModalVisibleCount + FINANCE_BATCH_SIZE, operations.length);
@@ -2422,18 +2443,37 @@ function loadMoreFinanceIfNeeded() {
   else renderFinanceExpenses();
 }
 
+function renderDebtExpenseCard(item) {
+  const note = item.note ? escapeHtml(item.note) : 'Без комментария';
+  return `
+    <div class="finance-expense-card debt">
+      <div class="finance-expense-info">
+        <div>🤝 Активный долг • ${formatRub(item.amount)}</div>
+        <div class="finance-expense-sub">
+          🏦 ${escapeHtml(item.bank)}<br>
+          ${item.date} ${item.time || ''}<br>
+          ${note}
+        </div>
+      </div>
+      <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
+    </div>
+  `;
+}
+
 function renderFinanceExpenses() {
   const container = document.getElementById('financeExpenses');
   if (!container) return;
-  const operations = getFinanceSummaryOperations();
+  const debts = getActiveDebtExpenses();
+  const operations = getFinanceMainOperations();
 
-  if (!operations.length) {
+  if (!debts.length && !operations.length) {
     container.innerHTML = '<div class="empty">Финансовых операций пока нет</div>';
     return;
   }
   const visibleOperations = operations.slice(0, financeVisibleCount);
   const hasMore = visibleOperations.length < operations.length;
-  container.innerHTML = visibleOperations.map(item => {
+  const debtHtml = debts.map(renderDebtExpenseCard).join('');
+  const operationsHtml = visibleOperations.map(item => {
     if (item.financeType === 'transfer') {
       return `
     <div class="finance-expense-card">
@@ -2462,7 +2502,8 @@ function renderFinanceExpenses() {
       <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
     </div>
     `;
-  }).join('') +
+  }).join('');
+  container.innerHTML = debtHtml + operationsHtml +
     (hasMore ? `<div class="empty">Показано ${visibleOperations.length} из ${operations.length}. Листай ниже, чтобы загрузить ещё.</div>` : '');
 }
 
