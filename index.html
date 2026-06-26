@@ -1564,6 +1564,7 @@ const LARGE_RUB_CONFIRM = 100000;
 const LARGE_USDT_CONFIRM = 1000;
 const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const UNDO_DELETE_MS = 12000;
+const INTEGRITY_CHECK_START_TS = new Date(2026, 5, 25, 0, 0, 0, 0).getTime();
 
 let currentMode = 'buy';
 let currentPage = 'trade';
@@ -3525,13 +3526,16 @@ function runIntegrityCheck() {
   const bankNames = new Set(banks.map(bank => String(bank.name || '').toLowerCase()).filter(Boolean));
   const now = Date.now();
   const futureLimit = now + 10 * 60 * 1000;
+  const checkedDeals = deals.filter(deal => getDealTimestamp(deal) >= INTEGRITY_CHECK_START_TS);
+  const checkedCardExpenses = cardExpenses.filter(expense => (expense.timestamp || 0) >= INTEGRITY_CHECK_START_TS);
+  const checkedBankTransfers = bankTransfers.filter(transfer => (transfer.timestamp || 0) >= INTEGRITY_CHECK_START_TS);
 
   banks.forEach(bank => {
     if (!bank.name || !String(bank.name).trim()) addIntegrityIssue(issues, 'danger', 'Есть банк без названия.');
     if ((bank.balance || 0) < 0) addIntegrityIssue(issues, 'warn', `Отрицательный остаток банка: ${bank.name} (${formatRub(bank.balance || 0)}).`);
   });
 
-  deals.forEach(deal => {
+  checkedDeals.forEach(deal => {
     const ts = getDealTimestamp(deal);
     if (!['buy', 'sell', 'deposit'].includes(deal.type)) addIntegrityIssue(issues, 'danger', `Сделка с неизвестным типом: ${deal.type || 'без типа'}.`);
     if (!ts || Number.isNaN(ts)) addIntegrityIssue(issues, 'danger', `Сделка без корректной даты: id ${deal.id || 'без id'}.`);
@@ -3542,14 +3546,14 @@ function runIntegrityCheck() {
     if (deal.bank && !bankNames.has(String(deal.bank).toLowerCase())) addIntegrityIssue(issues, 'warn', `В сделке указан банк не из списка: ${deal.bank}.`);
   });
 
-  cardExpenses.forEach(expense => {
+  checkedCardExpenses.forEach(expense => {
     if (!expense.bank) addIntegrityIssue(issues, 'danger', `Покупка картой без банка: id ${expense.id || 'без id'}.`);
     if (expense.bank && !bankNames.has(String(expense.bank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Покупка картой с банком не из списка: ${expense.bank}.`);
     if ((expense.amount || 0) <= 0) addIntegrityIssue(issues, 'danger', `Покупка картой с суммой <= 0: id ${expense.id || 'без id'}.`);
     if ((expense.timestamp || 0) > futureLimit) addIntegrityIssue(issues, 'warn', `Покупка картой из будущего: ${expense.date || ''} ${expense.time || ''}.`);
   });
 
-  bankTransfers.forEach(transfer => {
+  checkedBankTransfers.forEach(transfer => {
     if (!transfer.fromBank || !transfer.toBank) addIntegrityIssue(issues, 'danger', `Перевод без банка отправителя или получателя: id ${transfer.id || 'без id'}.`);
     if (transfer.fromBank && !bankNames.has(String(transfer.fromBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод из банка не из списка: ${transfer.fromBank}.`);
     if (transfer.toBank && !bankNames.has(String(transfer.toBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод в банк не из списка: ${transfer.toBank}.`);
@@ -3558,20 +3562,20 @@ function runIntegrityCheck() {
     if ((transfer.timestamp || 0) > futureLimit) addIntegrityIssue(issues, 'warn', `Перевод из будущего: ${transfer.date || ''} ${transfer.time || ''}.`);
   });
 
-  const duplicateDeals = findIntegrityDuplicates(deals, (a, b) =>
+  const duplicateDeals = findIntegrityDuplicates(checkedDeals, (a, b) =>
     a.type === b.type &&
     sameDayTimestamp(getDealTimestamp(a), getDealTimestamp(b)) &&
     String(a.bank || '').toLowerCase() === String(b.bank || '').toLowerCase() &&
     numbersClose(a.rub, b.rub, 0.01) &&
     numbersClose(a.usdt, b.usdt, 0.0001)
   );
-  const duplicateExpenses = findIntegrityDuplicates(cardExpenses, (a, b) =>
+  const duplicateExpenses = findIntegrityDuplicates(checkedCardExpenses, (a, b) =>
     sameDayTimestamp(a.timestamp, b.timestamp) &&
     String(a.bank || '').toLowerCase() === String(b.bank || '').toLowerCase() &&
     String(a.category || '').toLowerCase() === String(b.category || '').toLowerCase() &&
     numbersClose(a.amount, b.amount, 0.01)
   );
-  const duplicateTransfers = findIntegrityDuplicates(bankTransfers, (a, b) =>
+  const duplicateTransfers = findIntegrityDuplicates(checkedBankTransfers, (a, b) =>
     sameDayTimestamp(a.timestamp, b.timestamp) &&
     String(a.fromBank || '').toLowerCase() === String(b.fromBank || '').toLowerCase() &&
     String(a.toBank || '').toLowerCase() === String(b.toBank || '').toLowerCase() &&
@@ -3584,7 +3588,7 @@ function runIntegrityCheck() {
 
   const storageKb = Math.ceil(getStorageTextLength() / 1024);
   const chunks = estimateCloudStorageChunks();
-  const header = `Проверено: сделок ${deals.length}, банков ${banks.length}, покупок картой ${cardExpenses.length}, переводов ${bankTransfers.length}.\nДанные: примерно ${storageKb} КБ, ключей CloudStorage минимум ${chunks + 4}.`;
+  const header = `Проверено с 25.06.2026: сделок ${checkedDeals.length} из ${deals.length}, покупок картой ${checkedCardExpenses.length} из ${cardExpenses.length}, переводов ${checkedBankTransfers.length} из ${bankTransfers.length}. Банков всего: ${banks.length}.\nДанные: примерно ${storageKb} КБ, ключей CloudStorage минимум ${chunks + 4}.`;
   const dangerCount = issues.filter(item => item.level === 'danger').length;
   const warnCount = issues.filter(item => item.level === 'warn').length;
   reportEl.className = `integrity-report ${dangerCount ? 'danger' : warnCount ? 'warn' : 'ok'}`;
