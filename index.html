@@ -631,6 +631,15 @@
     font-size: 12px;
     line-height: 1.35;
   }
+  .backup-status {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--app-muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
   .finance-summary {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1140,12 +1149,15 @@
   <div class="backup-panel">
     <div class="section-title" style="margin:0;">🧰 Резервная копия</div>
     <div class="backup-hint">Экспортируй JSON перед крупными правками. Для восстановления вставь копию в поле и нажми импорт.</div>
+    <div class="backup-status" id="autoBackupStatus">Автобэкап: проверяю...</div>
     <textarea id="backupData" placeholder="Здесь появится резервная копия или сюда можно вставить JSON для импорта"></textarea>
     <div class="backup-actions">
       <button class="primary" onclick="exportBackup()">Экспорт</button>
       <button onclick="copyBackup()">Скопировать</button>
       <button onclick="importBackup()">Импорт</button>
       <button onclick="clearBackupField()">Очистить</button>
+      <button onclick="createAutoBackupNow()">Авто сейчас</button>
+      <button onclick="loadLatestAutoBackupToField()">Открыть авто</button>
     </div>
   </div>
 </div>
@@ -1369,6 +1381,10 @@ let historyVisibleCount = 25;
 const STORAGE_CHUNK_SIZE = 3000;
 const HISTORY_BATCH_SIZE = 25;
 const FINANCE_BATCH_SIZE = 25;
+const AUTO_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AUTO_BACKUP_MAX_SLOTS = 3;
+let autoBackupTimer = null;
+let autoBackupRunning = false;
 
 // ---- Функции перемещения банков (кнопки) ----
 function moveBank(id, direction) {
@@ -1454,6 +1470,7 @@ function switchPage(page) {
   } else if (isBanks) {
     renderBanksList();
     renderBankStats();
+    renderAutoBackupStatus();
   } else if (isFinance) {
     resetFinancePagination();
     renderFinance();
@@ -2976,6 +2993,39 @@ function buildBackupPayload() {
   };
 }
 
+function getBackupDataText() {
+  return JSON.stringify({ deals, banks, cardExpenses, bankTransfers });
+}
+
+function getBackupHash(text) {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(16);
+}
+
+function getBackupCounts(payload = buildBackupPayload()) {
+  return {
+    deals: Array.isArray(payload.deals) ? payload.deals.length : 0,
+    banks: Array.isArray(payload.banks) ? payload.banks.length : 0,
+    expenses: Array.isArray(payload.cardExpenses) ? payload.cardExpenses.length : 0,
+    transfers: Array.isArray(payload.bankTransfers) ? payload.bankTransfers.length : 0
+  };
+}
+
+function hasAnyBackupData() {
+  const counts = getBackupCounts();
+  return counts.deals + counts.banks + counts.expenses + counts.transfers > 0;
+}
+
+function formatBackupDate(value) {
+  if (!value) return 'нет';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'нет';
+  return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 function exportBackup() {
   const textarea = document.getElementById('backupData');
   textarea.value = JSON.stringify(buildBackupPayload(), null, 2);
@@ -3043,8 +3093,9 @@ function importBackup() {
     return;
   }
 
-  tg.showConfirm('Импорт заменить текущие сделки и банки?', (ok) => {
+  tg.showConfirm('Импорт заменить текущие сделки и банки?', async (ok) => {
     if (!ok) return;
+    await createAutoBackup('before-import', true, true);
     bankTransfers = importedBankTransfers;
     deals = importedDeals;
     cardExpenses = importedCardExpenses;
@@ -3060,6 +3111,135 @@ function importBackup() {
 
 function clearBackupField() {
   document.getElementById('backupData').value = '';
+}
+
+async function loadAutoBackupMeta() {
+  const value = await cloudGetItem('autoBackupMeta');
+  if (!value) return { lastAt: 0, lastHash: '', nextSlot: 0, backups: [] };
+  try {
+    const parsed = JSON.parse(value);
+    return {
+      lastAt: Number(parsed.lastAt || 0),
+      lastHash: parsed.lastHash || '',
+      nextSlot: Number.isInteger(parsed.nextSlot) ? parsed.nextSlot : 0,
+      backups: Array.isArray(parsed.backups) ? parsed.backups : []
+    };
+  } catch (e) {
+    console.warn('Auto backup meta parse failed:', e);
+    return { lastAt: 0, lastHash: '', nextSlot: 0, backups: [] };
+  }
+}
+
+async function saveAutoBackupMeta(meta) {
+  return cloudSetItem('autoBackupMeta', JSON.stringify(meta));
+}
+
+async function loadJsonValueChunks(key, fallback = null) {
+  const countValue = await cloudGetItem(`${key}_chunks_count`);
+  const count = parseInt(countValue || '0', 10);
+  if (!count || count < 1) return fallback;
+  const chunks = await Promise.all(
+    Array.from({ length: count }, (_, index) => cloudGetItem(`${key}_chunk_${index}`))
+  );
+  if (chunks.some(chunk => chunk === null || chunk === undefined)) return fallback;
+  try {
+    return JSON.parse(chunks.join(''));
+  } catch (e) {
+    console.warn('Chunked value parse failed:', key, e);
+    return fallback;
+  }
+}
+
+async function createAutoBackup(reason = 'auto', force = false, silent = true) {
+  if (autoBackupRunning || !hasAnyBackupData()) return false;
+  autoBackupRunning = true;
+  try {
+    const dataText = getBackupDataText();
+    const hash = getBackupHash(dataText);
+    const meta = await loadAutoBackupMeta();
+    const now = Date.now();
+    if (!force && meta.lastHash === hash) return false;
+    if (!force && meta.lastAt && now - meta.lastAt < AUTO_BACKUP_INTERVAL_MS) return false;
+
+    const slot = Math.max(0, Math.min(AUTO_BACKUP_MAX_SLOTS - 1, meta.nextSlot || 0));
+    const payload = {
+      ...buildBackupPayload(),
+      backupType: 'auto',
+      backupReason: reason,
+      checksum: hash
+    };
+    const saved = await saveJsonChunks(`autoBackup_${slot}`, payload, { silent });
+    if (!saved) return false;
+
+    const record = {
+      slot,
+      createdAt: payload.exportedAt,
+      reason,
+      hash,
+      counts: getBackupCounts(payload)
+    };
+    const backups = [record, ...meta.backups.filter(item => item.slot !== slot)]
+      .slice(0, AUTO_BACKUP_MAX_SLOTS);
+    await saveAutoBackupMeta({
+      lastAt: now,
+      lastHash: hash,
+      nextSlot: (slot + 1) % AUTO_BACKUP_MAX_SLOTS,
+      backups
+    });
+    renderAutoBackupStatus();
+    return true;
+  } finally {
+    autoBackupRunning = false;
+  }
+}
+
+function scheduleAutoBackup(reason = 'auto') {
+  clearTimeout(autoBackupTimer);
+  autoBackupTimer = setTimeout(() => {
+    createAutoBackup(reason, false, true);
+  }, 3000);
+}
+
+async function createAutoBackupNow() {
+  if (!hasAnyBackupData()) {
+    tg.showAlert('Пока нечего сохранять: нет сделок, банков или финансовых операций.');
+    return;
+  }
+  const created = await createAutoBackup('manual', true, false);
+  renderAutoBackupStatus();
+  tg.showAlert(created ? 'Автобэкап сохранён.' : 'Не удалось создать автобэкап.');
+}
+
+async function loadLatestAutoBackupToField() {
+  const meta = await loadAutoBackupMeta();
+  const latest = meta.backups[0];
+  if (!latest) {
+    tg.showAlert('Автобэкапов пока нет.');
+    return;
+  }
+  const payload = await loadJsonValueChunks(`autoBackup_${latest.slot}`, null);
+  if (!payload) {
+    tg.showAlert('Не удалось открыть автокопию.');
+    return;
+  }
+  const textarea = document.getElementById('backupData');
+  textarea.value = JSON.stringify(payload, null, 2);
+  textarea.focus();
+  textarea.select();
+  tg.showAlert('Последний автобэкап загружен в поле. Для восстановления нажми Импорт.');
+}
+
+async function renderAutoBackupStatus() {
+  const el = document.getElementById('autoBackupStatus');
+  if (!el) return;
+  const meta = await loadAutoBackupMeta();
+  const latest = meta.backups[0];
+  if (!latest) {
+    el.textContent = 'Автобэкап: пока нет. Создаётся автоматически раз в сутки после изменений.';
+    return;
+  }
+  const counts = latest.counts || {};
+  el.textContent = `Автобэкап: ${formatBackupDate(latest.createdAt)} • сделок ${counts.deals || 0} • банков ${counts.banks || 0} • финансовых операций ${(counts.expenses || 0) + (counts.transfers || 0)}. Храню последние ${AUTO_BACKUP_MAX_SLOTS}.`;
 }
 
 function cloudGetItem(key) {
@@ -3111,7 +3291,7 @@ async function loadJsonChunks(key, fallback) {
   }
 }
 
-async function saveJsonChunks(key, value) {
+async function saveJsonChunks(key, value, options = {}) {
   const text = JSON.stringify(value);
   const chunks = [];
   for (let i = 0; i < text.length; i += STORAGE_CHUNK_SIZE) {
@@ -3122,7 +3302,7 @@ async function saveJsonChunks(key, value) {
     chunks.map((chunk, index) => cloudSetItem(`${key}_chunk_${index}`, chunk))
   );
   if (saved.some(ok => !ok)) {
-    tg.showAlert('Не удалось сохранить данные. Проверьте интернет и попробуйте ещё раз.');
+    if (!options.silent) tg.showAlert('Не удалось сохранить данные. Проверьте интернет и попробуйте ещё раз.');
     return false;
   }
 
@@ -3135,6 +3315,7 @@ function saveData() {
   saveJsonChunks('banks', banks);
   saveJsonChunks('cardExpenses', cardExpenses);
   saveJsonChunks('bankTransfers', bankTransfers);
+  scheduleAutoBackup('auto');
 }
 
 async function loadData() {
@@ -3153,6 +3334,7 @@ async function loadData() {
   banks = normalizeBanks(banks);
   saveData();
   render();
+  renderAutoBackupStatus();
 }
 
 function normalizeBanks(saved) {
