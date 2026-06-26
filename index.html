@@ -726,6 +726,29 @@
     font-size: 12px;
     line-height: 1.35;
   }
+  .integrity-report {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--app-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--app-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-line;
+  }
+  .integrity-report.ok {
+    border-color: rgba(50, 245, 163, 0.25);
+    color: #a8ffd7;
+  }
+  .integrity-report.warn {
+    border-color: rgba(255, 210, 77, 0.28);
+    color: #ffe28a;
+  }
+  .integrity-report.danger {
+    border-color: rgba(255, 95, 126, 0.28);
+    color: #ffb0bf;
+  }
   .undo-toast {
     position: fixed;
     left: 50%;
@@ -1327,7 +1350,9 @@
             <button onclick="clearBackupField()">Очистить</button>
             <button onclick="createAutoBackupNow()">Создать бэкап</button>
             <button onclick="loadLatestAutoBackupToField()">Загрузить последний бэкап</button>
+            <button onclick="runIntegrityCheck()">Проверить данные</button>
           </div>
+          <div class="integrity-report" id="integrityReport">Проверка данных пока не запускалась.</div>
         </div>
       </div>
     </div>
@@ -3454,6 +3479,122 @@ function getBackupCounts(payload = buildBackupPayload()) {
 function hasAnyBackupData() {
   const counts = getBackupCounts();
   return counts.deals + counts.banks + counts.expenses + counts.transfers > 0;
+}
+
+function getStorageTextLength() {
+  return JSON.stringify(deals).length +
+    JSON.stringify(banks).length +
+    JSON.stringify(cardExpenses).length +
+    JSON.stringify(bankTransfers).length;
+}
+
+function estimateCloudStorageChunks() {
+  return Math.ceil(JSON.stringify(deals).length / STORAGE_CHUNK_SIZE) +
+    Math.ceil(JSON.stringify(banks).length / STORAGE_CHUNK_SIZE) +
+    Math.ceil(JSON.stringify(cardExpenses).length / STORAGE_CHUNK_SIZE) +
+    Math.ceil(JSON.stringify(bankTransfers).length / STORAGE_CHUNK_SIZE);
+}
+
+function addIntegrityIssue(list, level, text) {
+  list.push({ level, text });
+}
+
+function sameDayTimestamp(a, b) {
+  if (!a || !b) return false;
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate();
+}
+
+function findIntegrityDuplicates(items, matcher) {
+  let count = 0;
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (matcher(items[i], items[j])) count++;
+    }
+  }
+  return count;
+}
+
+function runIntegrityCheck() {
+  const reportEl = document.getElementById('integrityReport');
+  if (!reportEl) return;
+  const issues = [];
+  const bankNames = new Set(banks.map(bank => String(bank.name || '').toLowerCase()).filter(Boolean));
+  const now = Date.now();
+  const futureLimit = now + 10 * 60 * 1000;
+
+  banks.forEach(bank => {
+    if (!bank.name || !String(bank.name).trim()) addIntegrityIssue(issues, 'danger', 'Есть банк без названия.');
+    if ((bank.balance || 0) < 0) addIntegrityIssue(issues, 'warn', `Отрицательный остаток банка: ${bank.name} (${formatRub(bank.balance || 0)}).`);
+  });
+
+  deals.forEach(deal => {
+    const ts = getDealTimestamp(deal);
+    if (!['buy', 'sell', 'deposit'].includes(deal.type)) addIntegrityIssue(issues, 'danger', `Сделка с неизвестным типом: ${deal.type || 'без типа'}.`);
+    if (!ts || Number.isNaN(ts)) addIntegrityIssue(issues, 'danger', `Сделка без корректной даты: id ${deal.id || 'без id'}.`);
+    if (ts > futureLimit) addIntegrityIssue(issues, 'warn', `Сделка из будущего: ${deal.date || ''} ${deal.time || ''}.`);
+    if ((deal.usdt || 0) <= 0) addIntegrityIssue(issues, 'danger', `Сделка с USDT <= 0: id ${deal.id || 'без id'}.`);
+    if (deal.type !== 'deposit' && (deal.rub || 0) <= 0) addIntegrityIssue(issues, 'danger', `Сделка с рублями <= 0: id ${deal.id || 'без id'}.`);
+    if (deal.type !== 'deposit' && !deal.bank) addIntegrityIssue(issues, 'danger', `Сделка без банка: ${deal.date || ''} ${deal.time || ''}.`);
+    if (deal.bank && !bankNames.has(String(deal.bank).toLowerCase())) addIntegrityIssue(issues, 'warn', `В сделке указан банк не из списка: ${deal.bank}.`);
+  });
+
+  cardExpenses.forEach(expense => {
+    if (!expense.bank) addIntegrityIssue(issues, 'danger', `Покупка картой без банка: id ${expense.id || 'без id'}.`);
+    if (expense.bank && !bankNames.has(String(expense.bank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Покупка картой с банком не из списка: ${expense.bank}.`);
+    if ((expense.amount || 0) <= 0) addIntegrityIssue(issues, 'danger', `Покупка картой с суммой <= 0: id ${expense.id || 'без id'}.`);
+    if ((expense.timestamp || 0) > futureLimit) addIntegrityIssue(issues, 'warn', `Покупка картой из будущего: ${expense.date || ''} ${expense.time || ''}.`);
+  });
+
+  bankTransfers.forEach(transfer => {
+    if (!transfer.fromBank || !transfer.toBank) addIntegrityIssue(issues, 'danger', `Перевод без банка отправителя или получателя: id ${transfer.id || 'без id'}.`);
+    if (transfer.fromBank && !bankNames.has(String(transfer.fromBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод из банка не из списка: ${transfer.fromBank}.`);
+    if (transfer.toBank && !bankNames.has(String(transfer.toBank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Перевод в банк не из списка: ${transfer.toBank}.`);
+    if (String(transfer.fromBank || '').toLowerCase() === String(transfer.toBank || '').toLowerCase()) addIntegrityIssue(issues, 'danger', `Перевод внутри одного банка: ${transfer.fromBank}.`);
+    if ((transfer.amount || 0) <= 0) addIntegrityIssue(issues, 'danger', `Перевод с суммой <= 0: id ${transfer.id || 'без id'}.`);
+    if ((transfer.timestamp || 0) > futureLimit) addIntegrityIssue(issues, 'warn', `Перевод из будущего: ${transfer.date || ''} ${transfer.time || ''}.`);
+  });
+
+  const duplicateDeals = findIntegrityDuplicates(deals, (a, b) =>
+    a.type === b.type &&
+    sameDayTimestamp(getDealTimestamp(a), getDealTimestamp(b)) &&
+    String(a.bank || '').toLowerCase() === String(b.bank || '').toLowerCase() &&
+    numbersClose(a.rub, b.rub, 0.01) &&
+    numbersClose(a.usdt, b.usdt, 0.0001)
+  );
+  const duplicateExpenses = findIntegrityDuplicates(cardExpenses, (a, b) =>
+    sameDayTimestamp(a.timestamp, b.timestamp) &&
+    String(a.bank || '').toLowerCase() === String(b.bank || '').toLowerCase() &&
+    String(a.category || '').toLowerCase() === String(b.category || '').toLowerCase() &&
+    numbersClose(a.amount, b.amount, 0.01)
+  );
+  const duplicateTransfers = findIntegrityDuplicates(bankTransfers, (a, b) =>
+    sameDayTimestamp(a.timestamp, b.timestamp) &&
+    String(a.fromBank || '').toLowerCase() === String(b.fromBank || '').toLowerCase() &&
+    String(a.toBank || '').toLowerCase() === String(b.toBank || '').toLowerCase() &&
+    numbersClose(a.amount, b.amount, 0.01)
+  );
+
+  if (duplicateDeals) addIntegrityIssue(issues, 'warn', `Похожие сделки за один день: ${duplicateDeals}.`);
+  if (duplicateExpenses) addIntegrityIssue(issues, 'warn', `Похожие покупки картой за один день: ${duplicateExpenses}.`);
+  if (duplicateTransfers) addIntegrityIssue(issues, 'warn', `Похожие переводы за один день: ${duplicateTransfers}.`);
+
+  const storageKb = Math.ceil(getStorageTextLength() / 1024);
+  const chunks = estimateCloudStorageChunks();
+  const header = `Проверено: сделок ${deals.length}, банков ${banks.length}, покупок картой ${cardExpenses.length}, переводов ${bankTransfers.length}.\nДанные: примерно ${storageKb} КБ, ключей CloudStorage минимум ${chunks + 4}.`;
+  const dangerCount = issues.filter(item => item.level === 'danger').length;
+  const warnCount = issues.filter(item => item.level === 'warn').length;
+  reportEl.className = `integrity-report ${dangerCount ? 'danger' : warnCount ? 'warn' : 'ok'}`;
+  if (!issues.length) {
+    reportEl.textContent = `${header}\n\n✅ Проблем не найдено.`;
+    return;
+  }
+  reportEl.textContent = `${header}\n\nНайдено: критичных ${dangerCount}, предупреждений ${warnCount}.\n` +
+    issues.slice(0, 12).map((item, index) => `${index + 1}. ${item.text}`).join('\n') +
+    (issues.length > 12 ? `\n...и ещё ${issues.length - 12}.` : '');
 }
 
 function formatBackupDate(value) {
