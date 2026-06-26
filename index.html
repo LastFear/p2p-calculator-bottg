@@ -900,6 +900,44 @@
   .finance-panel.active {
     display: block;
   }
+  .debt-type-group {
+    display: none;
+    margin-top: -4px;
+  }
+  .debt-type-group.show {
+    display: block;
+  }
+  .debt-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .debt-toggle-btn {
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    padding: 9px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--app-muted);
+    cursor: pointer;
+    text-align: left;
+  }
+  .debt-toggle-btn strong,
+  .debt-toggle-btn span {
+    display: block;
+  }
+  .debt-toggle-btn strong {
+    font-size: 13px;
+    color: var(--app-text);
+  }
+  .debt-toggle-btn span {
+    margin-top: 2px;
+    font-size: 10px;
+  }
+  .debt-toggle-btn.active {
+    border-color: rgba(50, 245, 163, 0.42);
+    background: var(--app-gradient-soft), var(--app-panel);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26), 0 0 16px rgba(50, 245, 163, 0.08);
+  }
   .finance-expense-card {
     background: var(--app-panel);
     border: 1px solid var(--app-border);
@@ -934,6 +972,24 @@
     font-size: 18px;
     cursor: pointer;
     padding: 0 4px;
+  }
+  .finance-debt-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+  }
+  .finance-debt-pay {
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(50, 245, 163, 0.34);
+    border-radius: 8px;
+    background: var(--app-gradient-soft), var(--app-panel);
+    color: var(--app-text);
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
   }
   .activity-row {
     display: flex;
@@ -1424,7 +1480,7 @@
     </div>
     <div class="input-group">
       <label>Категория траты</label>
-      <select id="expenseCategory">
+      <select id="expenseCategory" onchange="updateExpenseDebtFields()">
         <option value="Продукты">Продукты</option>
         <option value="Кафе и рестораны">Кафе и рестораны</option>
         <option value="Транспорт">Транспорт</option>
@@ -1439,6 +1495,19 @@
         <option value="Долг">Долг</option>
         <option value="Прочее">Прочее</option>
       </select>
+    </div>
+    <div class="input-group debt-type-group" id="expenseDebtTypeGroup">
+      <label>Тип долга</label>
+      <div class="debt-toggle">
+        <button type="button" class="debt-toggle-btn active" id="expenseDebtLent" onclick="setExpenseDebtDirection('lent')">
+          <strong>Дал долг</strong>
+          <span>деньги ушли</span>
+        </button>
+        <button type="button" class="debt-toggle-btn" id="expenseDebtBorrowed" onclick="setExpenseDebtDirection('borrowed')">
+          <strong>Взял долг</strong>
+          <span>деньги пришли</span>
+        </button>
+      </div>
     </div>
     <div class="input-group">
       <label>Сумма покупки ₽</label>
@@ -1572,6 +1641,9 @@ const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const UNDO_DELETE_MS = 12000;
 const INTEGRITY_CHECK_START_TS = new Date(2026, 5, 25, 0, 0, 0, 0).getTime();
 const CASHBACK_TRANSFER_SOURCE = 'Кэшбэк';
+const DEBT_EXPENSE_CATEGORY = 'Долг';
+const DEBT_DIRECTION_LENT = 'lent';
+const DEBT_DIRECTION_BORROWED = 'borrowed';
 
 let currentMode = 'buy';
 let currentPage = 'trade';
@@ -1927,6 +1999,25 @@ function renderFinanceBankOptions() {
   }
 }
 
+function setExpenseDebtDirection(direction) {
+  const normalized = direction === DEBT_DIRECTION_BORROWED ? DEBT_DIRECTION_BORROWED : DEBT_DIRECTION_LENT;
+  const lentBtn = document.getElementById('expenseDebtLent');
+  const borrowedBtn = document.getElementById('expenseDebtBorrowed');
+  if (lentBtn) lentBtn.classList.toggle('active', normalized === DEBT_DIRECTION_LENT);
+  if (borrowedBtn) borrowedBtn.classList.toggle('active', normalized === DEBT_DIRECTION_BORROWED);
+}
+
+function getSelectedExpenseDebtDirection() {
+  return document.getElementById('expenseDebtBorrowed')?.classList.contains('active')
+    ? DEBT_DIRECTION_BORROWED
+    : DEBT_DIRECTION_LENT;
+}
+
+function updateExpenseDebtFields() {
+  const category = document.getElementById('expenseCategory')?.value || '';
+  document.getElementById('expenseDebtTypeGroup')?.classList.toggle('show', isDebtCategory(category));
+}
+
 function toggleFinancePanel(panel) {
   activeFinancePanel = activeFinancePanel === panel ? '' : panel;
   renderFinancePanels();
@@ -2021,6 +2112,39 @@ function isCashbackTransferSource(name) {
   return String(name || '').trim().toLowerCase() === CASHBACK_TRANSFER_SOURCE.toLowerCase();
 }
 
+function isDebtCategory(category) {
+  return String(category || '').trim().toLowerCase() === DEBT_EXPENSE_CATEGORY.toLowerCase();
+}
+
+function getDebtDirection(item) {
+  return item && item.debtDirection === DEBT_DIRECTION_BORROWED
+    ? DEBT_DIRECTION_BORROWED
+    : DEBT_DIRECTION_LENT;
+}
+
+function getCardExpenseBankEffect(expense) {
+  const amount = expense.amount || 0;
+  if (isDebtCategory(expense.category) && getDebtDirection(expense) === DEBT_DIRECTION_BORROWED) {
+    return amount;
+  }
+  return -amount;
+}
+
+function applyCardExpenseBankEffect(expense) {
+  return adjustBankBalance(expense.bank, getCardExpenseBankEffect(expense));
+}
+
+function reverseCardExpenseBankEffect(expense) {
+  return adjustBankBalance(expense.bank, -getCardExpenseBankEffect(expense));
+}
+
+function getFinanceExpenseSpendingAmount(expense) {
+  if (isDebtCategory(expense.category) && getDebtDirection(expense) === DEBT_DIRECTION_BORROWED) {
+    return 0;
+  }
+  return expense.amount || 0;
+}
+
 function adjustBankBalance(bankName, amount) {
   const bank = findBankByName(bankName);
   if (!bank) return false;
@@ -2087,6 +2211,7 @@ function findDuplicateCardExpense(candidate) {
     if (!isRecentTimestamp(e.timestamp)) return false;
     return String(e.bank || '').toLowerCase() === String(candidate.bank || '').toLowerCase() &&
       String(e.category || '').toLowerCase() === String(candidate.category || '').toLowerCase() &&
+      (!isDebtCategory(candidate.category) || getDebtDirection(e) === getDebtDirection(candidate)) &&
       numbersClose(e.amount, candidate.amount, 0.01);
   });
 }
@@ -2140,6 +2265,7 @@ function restoreLastDeleted() {
 async function addCardExpense() {
   const bankName = document.getElementById('expenseBank').value;
   const category = document.getElementById('expenseCategory').value;
+  const isDebt = isDebtCategory(category);
   const amount = parseNumberInput(document.getElementById('expenseAmount').value);
   const note = document.getElementById('expenseNote').value.trim();
 
@@ -2160,6 +2286,7 @@ async function addCardExpense() {
     time: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
     timestamp: now.getTime()
   };
+  if (isDebt) expense.debtDirection = getSelectedExpenseDebtDirection();
   if (!beginOperation()) return;
   try {
   const duplicateOk = confirmDuplicateOperation(findDuplicateCardExpense(expense), 'покупка картой');
@@ -2167,7 +2294,7 @@ async function addCardExpense() {
   const largeOk = confirmLargeOperation({ rub: amount, label: 'покупку картой' });
   if (largeOk !== true && !await largeOk) return;
 
-  bank.balance = (bank.balance || 0) - amount;
+  bank.balance = (bank.balance || 0) + getCardExpenseBankEffect(expense);
   cardExpenses.push(expense);
 
   document.getElementById('expenseAmount').value = '';
@@ -2185,28 +2312,80 @@ async function addCardExpense() {
 function deleteCardExpense(id) {
   const expense = cardExpenses.find(e => e.id === id);
   if (!expense) return;
-  tg.showConfirm('Удалить покупку и вернуть сумму на банк?', (ok) => {
+  const isDebt = isDebtCategory(expense.category);
+  const message = isDebt ? 'Удалить долг и откатить баланс банка?' : 'Удалить покупку и вернуть сумму на банк?';
+  tg.showConfirm(message, (ok) => {
     if (!ok) return;
     const removed = cloneData(expense);
-    const bank = findBankByName(expense.bank);
-    if (bank) bank.balance = (bank.balance || 0) + (expense.amount || 0);
+    reverseCardExpenseBankEffect(expense);
     cardExpenses = cardExpenses.filter(e => e.id !== id);
     saveData();
     renderFinance();
     renderBanksList();
     updateStats();
-    showUndoToast('Покупка удалена', () => {
+    showUndoToast(isDebt ? 'Долг удалён' : 'Покупка удалена', () => {
       if (removed.bank && !findBankByName(removed.bank)) {
         addNormalizedBank(banks, removed.bank);
         banks = normalizeBanks(banks);
       }
-      const restoredBank = findBankByName(removed.bank);
-      if (restoredBank) restoredBank.balance = (restoredBank.balance || 0) - (removed.amount || 0);
+      applyCardExpenseBankEffect(removed);
       cardExpenses.push(removed);
       saveData();
       refreshAfterDataChange();
     });
   });
+}
+
+function reduceDebtExpense(id) {
+  const expense = cardExpenses.find(e => e.id === id);
+  if (!expense || !isDebtCategory(expense.category)) return;
+  const currentAmount = expense.amount || 0;
+  if (currentAmount <= 0) return;
+
+  const direction = getDebtDirection(expense);
+  const promptText = direction === DEBT_DIRECTION_BORROWED
+    ? `Сколько ты отдал по долгу?\nОстаток: ${formatRub(currentAmount)}`
+    : `Сколько тебе вернули по долгу?\nОстаток: ${formatRub(currentAmount)}`;
+  const raw = window.prompt(promptText, '');
+  if (raw === null) return;
+
+  const amount = parseNumberInput(raw);
+  if (amount <= 0) {
+    tg.showAlert('Сумма должна быть больше нуля.');
+    return;
+  }
+  if (!findBankByName(expense.bank)) {
+    tg.showAlert('Банк не найден. Обнови список банков.');
+    return;
+  }
+  if (!beginOperation()) return;
+  try {
+    const before = cloneData(expense);
+    const paidAmount = Math.min(amount, currentAmount);
+    const bankDelta = direction === DEBT_DIRECTION_BORROWED ? -paidAmount : paidAmount;
+    adjustBankBalance(expense.bank, bankDelta);
+
+    if (paidAmount >= currentAmount) {
+      cardExpenses = cardExpenses.filter(e => e.id !== id);
+    } else {
+      expense.amount = currentAmount - paidAmount;
+    }
+
+    saveData();
+    renderFinance();
+    renderBanksList();
+    updateStats();
+    showUndoToast(paidAmount >= currentAmount ? 'Долг закрыт' : 'Долг уменьшен', () => {
+      adjustBankBalance(before.bank, -bankDelta);
+      const existing = cardExpenses.find(e => e.id === before.id);
+      if (existing) Object.assign(existing, before);
+      else cardExpenses.push(before);
+      saveData();
+      refreshAfterDataChange();
+    });
+  } finally {
+    endOperation();
+  }
 }
 
 async function addBankTransfer() {
@@ -2397,13 +2576,12 @@ function getFinanceSummaryOperations() {
 }
 
 function isDebtExpense(item) {
-  return item && item.financeType === 'expense' &&
-    String(item.category || '').trim().toLowerCase() === 'долг';
+  return item && item.financeType === 'expense' && isDebtCategory(item.category);
 }
 
 function getActiveDebtExpenses() {
   return cardExpenses
-    .filter(expense => String(expense.category || '').trim().toLowerCase() === 'долг')
+    .filter(expense => isDebtCategory(expense.category))
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 }
 
@@ -2444,18 +2622,25 @@ function loadMoreFinanceIfNeeded() {
 }
 
 function renderDebtExpenseCard(item) {
+  const direction = getDebtDirection(item);
+  const title = direction === DEBT_DIRECTION_BORROWED ? '🤲 Я должен' : '🤝 Мне должны';
+  const flow = direction === DEBT_DIRECTION_BORROWED ? `+ ${formatRub(item.amount)}` : `- ${formatRub(item.amount)}`;
+  const bankText = direction === DEBT_DIRECTION_BORROWED ? 'пришло на банк' : 'ушло с банка';
   const note = item.note ? escapeHtml(item.note) : 'Без комментария';
   return `
     <div class="finance-expense-card debt">
       <div class="finance-expense-info">
-        <div>🤝 Активный долг • ${formatRub(item.amount)}</div>
+        <div>${title} • ${flow}</div>
         <div class="finance-expense-sub">
-          🏦 ${escapeHtml(item.bank)}<br>
+          🏦 ${escapeHtml(item.bank)} • ${bankText}<br>
           ${item.date} ${item.time || ''}<br>
           ${note}
         </div>
       </div>
-      <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
+      <div class="finance-debt-actions">
+        <button class="finance-debt-pay" title="Уменьшить долг" onclick="reduceDebtExpense(${item.id})">−</button>
+        <button class="finance-delete" onclick="deleteCardExpense(${item.id})">🗑</button>
+      </div>
     </div>
   `;
 }
@@ -2537,6 +2722,7 @@ function renderFinanceOperationCard(item) {
     </div>
     `;
   }
+  if (isDebtExpense(item)) return renderDebtExpenseCard(item);
   return `
     <div class="finance-expense-card">
       <div class="finance-expense-info">
@@ -2557,11 +2743,12 @@ function renderFinance() {
   renderFinanceBankFilterOptions();
   renderFinancePeriodButtons();
   renderFinancePanels();
+  updateExpenseDebtFields();
   const periodInfo = getFinancePeriodInfo();
   const operations = getFinanceSummaryOperations();
   const expenseTotal = operations
     .filter(item => item.financeType === 'expense')
-    .reduce((sum, item) => sum + (item.amount || 0), 0);
+    .reduce((sum, item) => sum + getFinanceExpenseSpendingAmount(item), 0);
   document.getElementById('financeCountLabel').textContent = `📋 Операций ${periodInfo.label}`;
   document.getElementById('financeTotalLabel').textContent = `💸 Траты ${periodInfo.label}`;
   document.getElementById('financeWeekCount').textContent = String(operations.length);
@@ -3627,6 +3814,7 @@ function runIntegrityCheck() {
     sameDayTimestamp(a.timestamp, b.timestamp) &&
     String(a.bank || '').toLowerCase() === String(b.bank || '').toLowerCase() &&
     String(a.category || '').toLowerCase() === String(b.category || '').toLowerCase() &&
+    (!isDebtCategory(a.category) || getDebtDirection(a) === getDebtDirection(b)) &&
     numbersClose(a.amount, b.amount, 0.01)
   );
   const duplicateTransfers = findIntegrityDuplicates(checkedBankTransfers, (a, b) =>
@@ -4028,7 +4216,7 @@ function normalizeCardExpenses(saved) {
     .map(e => {
       const timestamp = e.timestamp || Date.now();
       const dateObj = new Date(timestamp);
-      return {
+      const normalized = {
         id: e.id || Date.now() + Math.random(),
         bank: String(e.bank).trim(),
         category: e.category || 'Прочее',
@@ -4038,6 +4226,8 @@ function normalizeCardExpenses(saved) {
         time: e.time || dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         timestamp
       };
+      if (isDebtCategory(normalized.category)) normalized.debtDirection = getDebtDirection(e);
+      return normalized;
     });
 }
 
