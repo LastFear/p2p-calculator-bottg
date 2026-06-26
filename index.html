@@ -275,6 +275,28 @@
     align-items: center;
     color: var(--app-text);
   }
+  .section-title.clickable {
+    cursor: pointer;
+    user-select: none;
+  }
+  .section-title.clickable:active {
+    opacity: 0.85;
+  }
+  .section-toggle-summary {
+    text-align: right;
+    font-size: 12px;
+    font-weight: normal;
+    line-height: 1.25;
+    color: var(--app-muted);
+  }
+  .section-toggle-summary strong {
+    display: block;
+    font-size: 13px;
+    color: var(--app-text);
+  }
+  .collapsible-content.collapsed {
+    display: none;
+  }
   .turnover-display {
     font-size: 14px;
     font-weight: normal;
@@ -863,8 +885,8 @@
     box-shadow: 0 8px 18px rgba(50, 245, 163, 0.1);
   }
   .finance-action-title {
-    font-size: 13px;
-    font-weight: bold;
+    font-size: 14px;
+    font-weight: 800;
     margin-bottom: 4px;
   }
   .finance-action-sub {
@@ -1381,12 +1403,22 @@
   <div id="banksList"></div>
 
   <div id="bankStatsSection">
-    <div class="section-title">📊 Сделки за выбранный период</div>
-    <div id="bankStats"></div>
+    <div class="section-title clickable" onclick="toggleBankStatsSection()">
+      <span>📊 Сделки за выбранный период</span>
+      <span class="section-toggle-summary" id="bankStatsToggleSummary">Открыть</span>
+    </div>
+    <div class="collapsible-content collapsed" id="bankStatsCollapsible">
+      <div id="bankStats"></div>
+    </div>
   </div>
 
-  <div class="section-title">💵 Наличные</div>
-  <div id="cashBalanceCard"></div>
+  <div class="section-title clickable" onclick="toggleCashSection()">
+    <span>💵 Наличные</span>
+    <span class="section-toggle-summary" id="cashToggleSummary">Баланс<strong id="cashCollapsedBalance">0 ₽</strong></span>
+  </div>
+  <div class="collapsible-content collapsed" id="cashCollapsible">
+    <div id="cashBalanceCard"></div>
+  </div>
 
   <button class="backup-card" onclick="openBackupModal()">
     <div class="backup-card-title">🧰 Резервные копии</div>
@@ -1467,8 +1499,8 @@
 
   <div class="finance-actions">
     <button class="finance-action-card" id="financeExpenseToggle" onclick="toggleFinancePanel('expense')">
-      <div class="finance-action-title">💳 Покупка картой</div>
-      <div class="finance-action-sub">Списать расход с выбранного банка</div>
+      <div class="finance-action-title">💳 Покупка</div>
+      <div class="finance-action-sub">Карта / наличные</div>
     </button>
     <button class="finance-action-card" id="financeTransferToggle" onclick="toggleFinancePanel('transfer')">
       <div class="finance-action-title">↔️ Перевод</div>
@@ -1478,7 +1510,7 @@
 
   <div class="form finance-panel" id="financeExpensePanel">
     <div class="input-group">
-      <label>🏦 Банк / карта</label>
+      <label>🏦 Банк / карта / наличные</label>
       <select id="expenseBank"></select>
     </div>
     <div class="input-group">
@@ -1525,7 +1557,7 @@
              onkeydown="if(event.key==='Enter'){event.preventDefault(); addCardExpense();}"
              enterkeyhint="done">
     </div>
-    <button class="btn-add" onclick="addCardExpense(); blurActiveElement();">Добавить покупку с карты</button>
+    <button class="btn-add" onclick="addCardExpense(); blurActiveElement();">Добавить покупку</button>
   </div>
 
   <div class="form finance-panel" id="financeTransferPanel">
@@ -1656,6 +1688,8 @@ let currentPage = 'trade';
 let deals = [];
 let banks = [];
 let cashBalance = 0;
+let bankStatsExpanded = false;
+let cashSectionExpanded = false;
 let cardExpenses = [];
 let bankTransfers = [];
 let activeFinancePanel = '';
@@ -1768,6 +1802,8 @@ function switchPage(page) {
     renderBanksList();
     renderCashBalanceCard();
     renderBankStats();
+    renderBankStatsSectionState();
+    renderCashSectionState();
     renderAutoBackupStatus();
   } else if (isFinance) {
     resetFinancePagination();
@@ -1775,6 +1811,15 @@ function switchPage(page) {
   }
   blurActiveElement();
   updateStats();
+  scrollAppToTop();
+}
+
+function scrollAppToTop() {
+  requestAnimationFrame(() => {
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.scrollTo({ top: 0, behavior: 'auto' });
+  });
 }
 
 // ---- Сортировка истории ----
@@ -1980,6 +2025,7 @@ function updateCashBalance(value) {
   cashBalance = parseNumberInput(value);
   saveData();
   renderCashBalanceCard();
+  renderCashSectionState();
   updateStats();
 }
 
@@ -2002,6 +2048,37 @@ function renderCashBalanceCard() {
       </div>
     </div>
   `;
+  renderCashSectionState();
+}
+
+function toggleBankStatsSection() {
+  bankStatsExpanded = !bankStatsExpanded;
+  renderBankStatsSectionState();
+  if (bankStatsExpanded) renderBankStats();
+}
+
+function renderBankStatsSectionState() {
+  const content = document.getElementById('bankStatsCollapsible');
+  const summary = document.getElementById('bankStatsToggleSummary');
+  if (content) content.classList.toggle('collapsed', !bankStatsExpanded);
+  if (summary) summary.textContent = bankStatsExpanded ? 'Скрыть' : 'Открыть';
+}
+
+function toggleCashSection() {
+  cashSectionExpanded = !cashSectionExpanded;
+  renderCashSectionState();
+  if (cashSectionExpanded) renderCashBalanceCard();
+}
+
+function renderCashSectionState() {
+  const content = document.getElementById('cashCollapsible');
+  const summary = document.getElementById('cashToggleSummary');
+  if (content) content.classList.toggle('collapsed', !cashSectionExpanded);
+  if (summary) {
+    summary.innerHTML = cashSectionExpanded
+      ? 'Скрыть'
+      : `Баланс<strong>${formatRub(cashBalance)}</strong>`;
+  }
 }
 
 // ---- Финансы ----
@@ -2011,9 +2088,12 @@ function renderFinanceBankOptions() {
   const transferTo = document.getElementById('transferToBank');
   if (!select) return;
   if (!banks.length) {
-    select.innerHTML = '<option value="">Сначала добавь банк во вкладке Банки</option>';
-    if (transferFrom) transferFrom.innerHTML = select.innerHTML;
-    if (transferTo) transferTo.innerHTML = select.innerHTML;
+    const cashOption = `<option value="${escapeHtml(CASH_TRANSFER_TARGET)}">${CASH_TRANSFER_TARGET}</option>`;
+    const externalOption = `<option value="${escapeHtml(EXTERNAL_TRANSFER_SOURCE)}">${EXTERNAL_TRANSFER_SOURCE}</option>`;
+    const salaryOption = `<option value="${escapeHtml(SALARY_TRANSFER_SOURCE)}">${SALARY_TRANSFER_SOURCE}</option>`;
+    select.innerHTML = '<option value="">Выбери платежную систему</option>' + cashOption;
+    if (transferFrom) transferFrom.innerHTML = '<option value="">Откуда списать</option>' + externalOption + salaryOption + cashOption;
+    if (transferTo) transferTo.innerHTML = '<option value="">Куда зачислить</option>' + cashOption;
     return;
   }
   const current = select.value;
@@ -2023,9 +2103,9 @@ function renderFinanceBankOptions() {
   const externalOption = `<option value="${escapeHtml(EXTERNAL_TRANSFER_SOURCE)}">${EXTERNAL_TRANSFER_SOURCE}</option>`;
   const salaryOption = `<option value="${escapeHtml(SALARY_TRANSFER_SOURCE)}">${SALARY_TRANSFER_SOURCE}</option>`;
   const cashOption = `<option value="${escapeHtml(CASH_TRANSFER_TARGET)}">${CASH_TRANSFER_TARGET}</option>`;
-  select.innerHTML = '<option value="">Выбери банк</option>' +
-    options;
-  if (banks.some(bank => bank.name === current)) select.value = current;
+  select.innerHTML = '<option value="">Выбери платежную систему</option>' + cashOption + options;
+  if (isCashTransferTarget(current)) select.value = CASH_TRANSFER_TARGET;
+  else if (banks.some(bank => bank.name === current)) select.value = current;
   if (transferFrom) {
     transferFrom.innerHTML = '<option value="">Откуда списать</option>' + externalOption + salaryOption + cashOption + options;
     if (String(currentFrom).trim().toLowerCase() === SALARY_TRANSFER_SOURCE.toLowerCase()) transferFrom.value = SALARY_TRANSFER_SOURCE;
@@ -2197,11 +2277,11 @@ function getCardExpenseBankEffect(expense) {
 }
 
 function applyCardExpenseBankEffect(expense) {
-  return adjustBankBalance(expense.bank, getCardExpenseBankEffect(expense));
+  return adjustPaymentBalance(expense.bank, getCardExpenseBankEffect(expense));
 }
 
 function reverseCardExpenseBankEffect(expense) {
-  return adjustBankBalance(expense.bank, -getCardExpenseBankEffect(expense));
+  return adjustPaymentBalance(expense.bank, -getCardExpenseBankEffect(expense));
 }
 
 function getFinanceExpenseSpendingAmount(expense) {
@@ -2216,6 +2296,14 @@ function adjustBankBalance(bankName, amount) {
   if (!bank) return false;
   bank.balance = (bank.balance || 0) + amount;
   return true;
+}
+
+function adjustPaymentBalance(paymentName, amount) {
+  if (isCashTransferTarget(paymentName)) {
+    cashBalance = (cashBalance || 0) + amount;
+    return true;
+  }
+  return adjustBankBalance(paymentName, amount);
 }
 
 function cloneData(value) {
@@ -2332,19 +2420,20 @@ async function addCardExpense() {
   const bankName = document.getElementById('expenseBank').value;
   const category = document.getElementById('expenseCategory').value;
   const isDebt = isDebtCategory(category);
+  const isCashPayment = isCashTransferTarget(bankName);
   const amount = parseNumberInput(document.getElementById('expenseAmount').value);
   const note = document.getElementById('expenseNote').value.trim();
 
-  if (!bankName) { tg.showAlert('Выбери банк / карту.'); return; }
+  if (!bankName) { tg.showAlert('Выбери платежную систему.'); return; }
   if (amount <= 0) { tg.showAlert('Сумма покупки должна быть больше нуля.'); return; }
 
-  const bank = findBankByName(bankName);
-  if (!bank) { tg.showAlert('Банк не найден. Обнови список банков.'); return; }
+  const bank = isCashPayment ? null : findBankByName(bankName);
+  if (!isCashPayment && !bank) { tg.showAlert('Банк не найден. Обнови список банков.'); return; }
 
   const now = new Date();
   const expense = {
     id: Date.now(),
-    bank: bank.name,
+    bank: isCashPayment ? CASH_TRANSFER_TARGET : bank.name,
     category,
     amount,
     note,
@@ -2355,12 +2444,12 @@ async function addCardExpense() {
   if (isDebt) expense.debtDirection = getSelectedExpenseDebtDirection();
   if (!beginOperation()) return;
   try {
-  const duplicateOk = confirmDuplicateOperation(findDuplicateCardExpense(expense), 'покупка картой');
+  const duplicateOk = confirmDuplicateOperation(findDuplicateCardExpense(expense), 'покупка');
   if (duplicateOk !== true && !await duplicateOk) return;
-  const largeOk = confirmLargeOperation({ rub: amount, label: 'покупку картой' });
+  const largeOk = confirmLargeOperation({ rub: amount, label: 'покупку' });
   if (largeOk !== true && !await largeOk) return;
 
-  bank.balance = (bank.balance || 0) + getCardExpenseBankEffect(expense);
+  applyCardExpenseBankEffect(expense);
   cardExpenses.push(expense);
 
   document.getElementById('expenseAmount').value = '';
@@ -2392,7 +2481,7 @@ function deleteCardExpense(id) {
     renderCashBalanceCard();
     updateStats();
     showUndoToast(isDebt ? 'Долг удалён' : 'Покупка удалена', () => {
-      if (removed.bank && !findBankByName(removed.bank)) {
+      if (removed.bank && !isCashTransferTarget(removed.bank) && !findBankByName(removed.bank)) {
         addNormalizedBank(banks, removed.bank);
         banks = normalizeBanks(banks);
       }
@@ -2422,8 +2511,8 @@ function reduceDebtExpense(id) {
     tg.showAlert('Сумма должна быть больше нуля.');
     return;
   }
-  if (!findBankByName(expense.bank)) {
-    tg.showAlert('Банк не найден. Обнови список банков.');
+  if (!isCashTransferTarget(expense.bank) && !findBankByName(expense.bank)) {
+    tg.showAlert('Платежная система не найдена. Обнови список банков.');
     return;
   }
   if (!beginOperation()) return;
@@ -2431,7 +2520,7 @@ function reduceDebtExpense(id) {
     const before = cloneData(expense);
     const paidAmount = Math.min(amount, currentAmount);
     const bankDelta = direction === DEBT_DIRECTION_BORROWED ? -paidAmount : paidAmount;
-    adjustBankBalance(expense.bank, bankDelta);
+    adjustPaymentBalance(expense.bank, bankDelta);
 
     if (paidAmount >= currentAmount) {
       cardExpenses = cardExpenses.filter(e => e.id !== id);
@@ -2442,9 +2531,10 @@ function reduceDebtExpense(id) {
     saveData();
     renderFinance();
     renderBanksList();
+    renderCashBalanceCard();
     updateStats();
     showUndoToast(paidAmount >= currentAmount ? 'Долг закрыт' : 'Долг уменьшен', () => {
-      adjustBankBalance(before.bank, -bankDelta);
+      adjustPaymentBalance(before.bank, -bankDelta);
       const existing = cardExpenses.find(e => e.id === before.id);
       if (existing) Object.assign(existing, before);
       else cardExpenses.push(before);
@@ -3743,6 +3833,8 @@ function render() {
     renderBanksList();
     renderCashBalanceCard();
     renderBankStats();
+    renderBankStatsSectionState();
+    renderCashSectionState();
   } else if (currentPage === 'finance') {
     renderFinance();
   }
@@ -3871,8 +3963,9 @@ function runIntegrityCheck() {
   });
 
   checkedCardExpenses.forEach(expense => {
+    const isCashPayment = isCashTransferTarget(expense.bank);
     if (!expense.bank) addIntegrityIssue(issues, 'danger', `Покупка картой без банка: id ${expense.id || 'без id'}.`);
-    if (expense.bank && !bankNames.has(String(expense.bank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Покупка картой с банком не из списка: ${expense.bank}.`);
+    if (expense.bank && !isCashPayment && !bankNames.has(String(expense.bank).toLowerCase())) addIntegrityIssue(issues, 'warn', `Покупка картой с банком не из списка: ${expense.bank}.`);
     if ((expense.amount || 0) <= 0) addIntegrityIssue(issues, 'danger', `Покупка картой с суммой <= 0: id ${expense.id || 'без id'}.`);
     if ((expense.timestamp || 0) > futureLimit) addIntegrityIssue(issues, 'warn', `Покупка картой из будущего: ${expense.date || ''} ${expense.time || ''}.`);
   });
@@ -4327,7 +4420,7 @@ function normalizeBanks(saved) {
     }
   });
   deals.forEach(d => { if (d.bank) addNormalizedBank(result, d.bank); });
-  cardExpenses.forEach(e => { if (e.bank) addNormalizedBank(result, e.bank); });
+  cardExpenses.forEach(e => { if (e.bank && !isCashTransferTarget(e.bank)) addNormalizedBank(result, e.bank); });
   bankTransfers.forEach(t => {
     if (t.fromBank && !isNonBankTransferEndpoint(t.fromBank)) addNormalizedBank(result, t.fromBank);
     if (t.toBank && !isNonBankTransferEndpoint(t.toBank)) addNormalizedBank(result, t.toBank);
