@@ -315,6 +315,53 @@
     font-weight: bold;
     cursor: pointer;
   }
+  .trade-action-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 10px;
+  }
+  .btn-period {
+    width: 100%;
+    padding: 14px 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--app-text);
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .btn-period.active {
+    background: var(--app-gradient-soft), var(--app-panel);
+    border-color: rgba(50, 245, 163, 0.42);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28), 0 0 16px rgba(50, 245, 163, 0.08);
+  }
+  .period-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .period-modal-actions button {
+    padding: 11px;
+    border: none;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--app-text);
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .period-modal-actions button.primary {
+    background: var(--app-gradient);
+    color: #07100d;
+  }
+  .period-hint {
+    color: var(--app-muted);
+    font-size: 12px;
+    line-height: 1.35;
+    margin-bottom: 12px;
+  }
   .history-filter-btn.active {
     background: var(--app-gradient);
     color: #07100d;
@@ -1176,7 +1223,39 @@
     <div class="bank-warning" id="bankWarning"></div>
 
     <div class="rate-preview" id="ratePreview">Курс: —</div>
-    <button class="btn-add" onclick="addDeal(); blurActiveElement();">Добавить сделку</button>
+    <div class="trade-action-row">
+      <button class="btn-add" onclick="addDeal(); blurActiveElement();">Добавить сделку</button>
+      <button class="btn-period" id="tradePeriodBtn" onclick="openTradePeriodModal()">Период</button>
+    </div>
+  </div>
+
+  <div class="chart-modal" id="tradePeriodModal" onclick="closeTradePeriodModal(event)">
+    <div class="chart-panel" onclick="event.stopPropagation()">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">🗓 Период сделки</div>
+          <div class="chart-subtitle" id="tradePeriodSubtitle">По умолчанию: текущее время</div>
+        </div>
+        <button class="chart-close" onclick="closeTradePeriodModal()">×</button>
+      </div>
+      <div class="chart-body">
+        <div class="period-hint">Если не выбирать дату и время, сделка добавится как обычно — текущим моментом.</div>
+        <div class="deal-edit-form">
+          <div>
+            <label>Дата</label>
+            <input type="date" id="tradePeriodDate">
+          </div>
+          <div>
+            <label>Время</label>
+            <input type="time" id="tradePeriodTime">
+          </div>
+        </div>
+        <div class="period-modal-actions">
+          <button class="primary" onclick="applyTradePeriod()">Применить</button>
+          <button onclick="clearTradePeriod()">Сбросить</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1479,6 +1558,7 @@ let currentStatsPeriod = 'all';
 let historyTypeFilter = 'all';
 let historyBankFilter = '';
 let historyVisibleCount = 25;
+let customDealTimestamp = null;
 const STORAGE_CHUNK_SIZE = 3000;
 const HISTORY_BATCH_SIZE = 25;
 const FINANCE_BATCH_SIZE = 25;
@@ -1624,6 +1704,66 @@ function resetTradeForm() {
   document.getElementById('inputUsdt').value = '0';
   document.getElementById('bankWarning').classList.remove('show');
   updateRate();
+}
+
+function formatDateInputValue(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatTimeInputValue(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function getTradeDealDate() {
+  return customDealTimestamp ? new Date(customDealTimestamp) : new Date();
+}
+
+function updateTradePeriodButton() {
+  const btn = document.getElementById('tradePeriodBtn');
+  const subtitle = document.getElementById('tradePeriodSubtitle');
+  if (!btn) return;
+  if (!customDealTimestamp) {
+    btn.textContent = 'Период';
+    btn.classList.remove('active');
+    if (subtitle) subtitle.textContent = 'По умолчанию: текущее время';
+    return;
+  }
+  const date = new Date(customDealTimestamp);
+  btn.textContent = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')} ${formatTimeInputValue(date)}`;
+  btn.classList.add('active');
+  if (subtitle) subtitle.textContent = `Выбрано: ${date.toLocaleDateString('ru-RU')} ${formatTimeInputValue(date)}`;
+}
+
+function openTradePeriodModal() {
+  const date = customDealTimestamp ? new Date(customDealTimestamp) : new Date();
+  document.getElementById('tradePeriodDate').value = formatDateInputValue(date);
+  document.getElementById('tradePeriodTime').value = formatTimeInputValue(date);
+  updateTradePeriodButton();
+  document.getElementById('tradePeriodModal').classList.add('show');
+  blurActiveElement();
+}
+
+function closeTradePeriodModal(event) {
+  if (event && event.target && event.target.id !== 'tradePeriodModal') return;
+  document.getElementById('tradePeriodModal').classList.remove('show');
+}
+
+function applyTradePeriod() {
+  const dateValue = document.getElementById('tradePeriodDate').value;
+  const timeValue = document.getElementById('tradePeriodTime').value || '00:00';
+  if (!dateValue) { tg.showAlert('Выбери дату сделки.'); return; }
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const [hour, minute] = timeValue.split(':').map(Number);
+  const date = new Date(year, month - 1, day, hour || 0, minute || 0, 0, 0);
+  customDealTimestamp = date.getTime();
+  updateTradePeriodButton();
+  closeTradePeriodModal();
+}
+
+function clearTradePeriod() {
+  customDealTimestamp = null;
+  updateTradePeriodButton();
+  closeTradePeriodModal();
 }
 
 function parseNumberInput(value) {
@@ -2478,7 +2618,7 @@ async function addDeal() {
     }
   }
 
-  const now = new Date();
+  const now = getTradeDealDate();
   const deal = {
     id: Date.now(),
     type: currentMode,
@@ -2503,6 +2643,8 @@ async function addDeal() {
   renderBankOptions();
   saveData();
   render(); // перерисовывает все вкладки, но у нас не останавливает фокус, потому что мы не вводим в тот момент
+  customDealTimestamp = null;
+  updateTradePeriodButton();
   blurActiveElement();
   } finally {
     endOperation();
