@@ -1026,9 +1026,24 @@
     min-width: 0;
     flex: 1;
   }
+  .activity-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
   .activity-name {
     font-size: 13px;
     font-weight: bold;
+    min-width: 0;
+    word-break: break-word;
+  }
+  .activity-balance {
+    flex-shrink: 0;
+    color: var(--app-muted);
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
   }
   .activity-sub {
     margin-top: 2px;
@@ -1385,22 +1400,24 @@
 
 <!-- Вкладка "Банки" -->
 <div class="view" id="banksView">
-  <div class="section-title">
+  <div class="section-title clickable" onclick="toggleBanksSection()">
     <span>🏦 Мои банки</span>
     <span class="bank-balance-summary">Баланс<strong id="bankBalanceSummary">0 ₽</strong></span>
   </div>
 
-  <div class="form">
-    <div class="input-group">
-      <label>Название банка</label>
-      <input type="text" id="newBankName" placeholder="Например: Сбер" 
-             onkeydown="if(event.key==='Enter'){event.preventDefault(); addBank();}"
-             enterkeyhint="done">
+  <div class="collapsible-content" id="banksCollapsible">
+    <div class="form">
+      <div class="input-group">
+        <label>Название банка</label>
+        <input type="text" id="newBankName" placeholder="Например: Сбер"
+               onkeydown="if(event.key==='Enter'){event.preventDefault(); addBank();}"
+               enterkeyhint="done">
+      </div>
+      <button class="btn-add" onclick="addBank(); blurActiveElement();">Добавить банк</button>
     </div>
-    <button class="btn-add" onclick="addBank(); blurActiveElement();">Добавить банк</button>
-  </div>
 
-  <div id="banksList"></div>
+    <div id="banksList"></div>
+  </div>
 
   <div id="bankStatsSection">
     <div class="section-title clickable" onclick="toggleBankStatsSection()">
@@ -1688,6 +1705,7 @@ let currentPage = 'trade';
 let deals = [];
 let banks = [];
 let cashBalance = 0;
+let banksSectionExpanded = true;
 let bankStatsExpanded = false;
 let cashSectionExpanded = false;
 let cardExpenses = [];
@@ -1800,6 +1818,7 @@ function switchPage(page) {
     renderHistory();
   } else if (isBanks) {
     renderBanksList();
+    renderBanksSectionState();
     renderCashBalanceCard();
     renderBankStats();
     renderBankStatsSectionState();
@@ -2049,6 +2068,17 @@ function renderCashBalanceCard() {
     </div>
   `;
   renderCashSectionState();
+}
+
+function toggleBanksSection() {
+  banksSectionExpanded = !banksSectionExpanded;
+  renderBanksSectionState();
+  if (banksSectionExpanded) renderBanksList();
+}
+
+function renderBanksSectionState() {
+  const content = document.getElementById('banksCollapsible');
+  if (content) content.classList.toggle('collapsed', !banksSectionExpanded);
 }
 
 function toggleBankStatsSection() {
@@ -2680,7 +2710,10 @@ function renderFinanceActivity() {
     return `
       <div class="activity-row">
         <div class="activity-main">
-          <div class="activity-name">🏦 ${escapeHtml(bank.name)}</div>
+          <div class="activity-head">
+            <div class="activity-name">🏦 ${escapeHtml(bank.name)}</div>
+            <div class="activity-balance">${formatRub(bank.balance || 0)}</div>
+          </div>
           <div class="activity-sub">${lastText}</div>
           <div class="activity-last">${escapeHtml(recentText)}</div>
         </div>
@@ -3831,6 +3864,7 @@ function render() {
     renderHistory();
   } else if (currentPage === 'banks') {
     renderBanksList();
+    renderBanksSectionState();
     renderCashBalanceCard();
     renderBankStats();
     renderBankStatsSectionState();

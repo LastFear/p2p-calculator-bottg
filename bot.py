@@ -8,7 +8,7 @@ from flask import Flask, jsonify, request
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
-APP_VERSION = "finance-cash-collapse-v1"
+APP_VERSION = "banks-collapse-finance-balances-v1"
 
 app = Flask(__name__)
 
