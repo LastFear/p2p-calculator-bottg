@@ -20,6 +20,7 @@
     --app-danger: #ff5f7e;
     --app-gradient: linear-gradient(135deg, rgba(50, 245, 163, 0.95), rgba(142, 92, 255, 0.9));
     --app-gradient-soft: linear-gradient(135deg, rgba(50, 245, 163, 0.22), rgba(142, 92, 255, 0.24));
+    --keyboard-offset: 0px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
   html,
@@ -46,11 +47,12 @@
     margin: 0 auto;
     padding-top: calc(16px + var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
     padding-right: calc(16px + var(--tg-safe-area-inset-right, 0px));
-    padding-bottom: calc(98px + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
+    padding-bottom: calc(98px + var(--keyboard-offset, 0px) + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
     padding-left: calc(16px + var(--tg-safe-area-inset-left, 0px));
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    scroll-padding-bottom: calc(120px + var(--keyboard-offset, 0px));
   }
   
   /* Убираем стрелочки у всех числовых полей */
@@ -636,6 +638,12 @@
     border-top: 1px solid var(--app-border);
     backdrop-filter: blur(14px);
     z-index: 10;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+  }
+  body.keyboard-open .bottom-nav {
+    transform: translate(-50%, 110%);
+    opacity: 0;
+    pointer-events: none;
   }
   .bottom-nav button {
     flex: 1;
@@ -1660,6 +1668,46 @@ function blurActiveElement() {
     document.activeElement.blur();
   }
 }
+
+function isEditableElement(element) {
+  return element && ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName);
+}
+
+function updateKeyboardOffset() {
+  const viewport = window.visualViewport;
+  let keyboardOffset = 0;
+  if (viewport) {
+    keyboardOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+  }
+  const isKeyboardOpen = keyboardOffset > 80 && isEditableElement(document.activeElement);
+  document.documentElement.style.setProperty('--keyboard-offset', isKeyboardOpen ? `${Math.ceil(keyboardOffset)}px` : '0px');
+  document.body.classList.toggle('keyboard-open', isKeyboardOpen);
+}
+
+function keepFocusedFieldVisible() {
+  if (!isEditableElement(document.activeElement)) return;
+  updateKeyboardOffset();
+  window.setTimeout(() => {
+    if (!isEditableElement(document.activeElement)) return;
+    document.activeElement.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+  }, 80);
+}
+
+document.addEventListener('focusin', (event) => {
+  if (!isEditableElement(event.target)) return;
+  keepFocusedFieldVisible();
+  window.setTimeout(keepFocusedFieldVisible, 260);
+});
+
+document.addEventListener('focusout', () => {
+  window.setTimeout(updateKeyboardOffset, 120);
+});
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', keepFocusedFieldVisible);
+  window.visualViewport.addEventListener('scroll', keepFocusedFieldVisible);
+}
+window.addEventListener('resize', updateKeyboardOffset);
 
 // Глобальный обработчик на touchstart и click
 document.addEventListener('touchstart', function(e) {
